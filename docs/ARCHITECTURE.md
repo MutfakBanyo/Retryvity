@@ -1,0 +1,132 @@
+# Architecture
+
+Corona Doctor is built as a set of layers with one-directional
+dependencies. Higher layers depend on lower ones; lower layers never
+import from higher ones.
+
+```
+ui/            (PySide6, qtmax)
+   |
+app/           (composition: wires services + UI together)
+   |
+scanners/      (produce Finding objects; no widgets)
+repair/        (interfaces only in this phase; no scene mutation)
+rules/         (declarative rule loading — empty in this phase)
+   |
+compatibility/ (capability registry, version parsing, feature flags)
+adapters/      (the ONLY place allowed to import pymxs/qtmax/Corona)
+   |
+core/          (domain models, event bus, rule engine, diagnostic engine)
+```
+
+`core/`, `compatibility/`, `persistence/`, `logging/` and `performance/`
+have **no Qt or pymxs dependency** and must remain importable in a plain
+Python 3.11 interpreter — this is what lets `corona_doctor/tests/` run
+outside 3ds Max.
+
+## UI boundary
+
+The UI layer (`ui/`) never contains scene-analysis logic. Views
+(`ui/views/*`) are dumb: they render whatever domain object
+(`Finding`, `ScanSummary`, `EnvironmentReport`) they are handed and emit
+Qt signals for user actions (e.g. `OverviewView.scan_requested`). They do
+not call scanners or adapters directly — that happens in
+`ui/main_window.py` via `ui/scan_controller.py`, which drives
+`DiagnosticEngine.iter_run()`.
+
+Findings are rendered with Qt Model/View
+(`ui/models/findings_model.py` + `ui/delegates/finding_delegate.py`) —
+never one `QWidget` per finding — per the UI performance rules in the
+project brief. Rule IDs are deliberately not shown in the primary list;
+they belong in a future technical-details pane.
+
+## Scanner boundary
+
+A scanner (`scanners/base.py::BaseScanner`) returns `Finding` objects
+(`core/models.py`) from a generator, never widgets, and never touches
+`self` state a widget could read directly. `DemoScanner`
+(`scanners/demo_scanner.py`) is a deterministic, clearly-labeled stand-in
+for real scene analysis — every demo `Finding.details` string says so
+explicitly, so it can never be mistaken for real Corona/scene diagnostic
+output. Production scanners (geometry, materials, textures, lighting,
+Corona-specific checks, ...) are a future milestone and will implement
+the same `BaseScanner` contract.
+
+## Adapter layer
+
+`adapters/max_adapter.py` and `adapters/corona_adapter.py` are the only
+modules allowed to `import pymxs` / `import qtmax`. Both follow:
+
+```python
+try:
+    import pymxs
+except ImportError:
+    pymxs = None
+```
+
+and every public method returns a safe default (`None`, `False`, `()`)
+rather than raising when the host API is unavailable or a probe fails.
+`adapters/environment_adapter.py` aggregates both into a structured
+`EnvironmentReport` — the single source environment data flows through.
+
+## Capability system
+
+Nothing above the adapter layer should assume a Corona property exists.
+`compatibility/capabilities.py::CapabilityRegistry` is built once from an
+`EnvironmentReport` and exposes `supports(key) -> bool | None`. `None`
+means "could not be determined" and callers must treat it as "do not
+assume this exists," not as `False`. Future rules will call
+`capabilities.supports(...)` instead of hardcoding Corona property
+assumptions, and degrade with a "rule skipped: capability unavailable"
+finding rather than crashing.
+
+## Repair boundary
+
+`repair/base.py::RepairAction` defines the interface every future repair
+action implements: `can_apply`, `apply`, `undo`. **No repair action
+executes in this bootstrap phase** — `repair/registry.py::RepairRegistry`
+exists but starts empty. This is a deliberate design invariant: a
+scanner must never be able to reach a repair action directly (there is no
+import path from `scanners/` to `repair/`), and no repair action may ship
+without undo support.
+
+## Event system
+
+`core/events.py::EventBus` is a minimal synchronous pub/sub bus with no
+Qt dependency, so `core/diagnostics.py::DiagnosticEngine` can publish
+`ScanStarted` / `ScanProgress` / `FindingAdded` / `ScanFinished` /
+`ScanFailed` / `EnvironmentUpdated` events without importing PySide6. The
+UI subscribes to this bus (`MainPanel._on_event`) rather than the
+diagnostic engine calling into widgets directly.
+
+## Threading rule (critical)
+
+**pymxs scene access is main-thread-only.** No adapter method, scanner,
+or rule may be invoked from a worker thread (`QThread`,
+`concurrent.futures`, etc.) if it touches `pymxs.runtime`. Long scans are
+instead structured as generators (`BaseScanner.scan()`) that yield
+between batches; `ui/scan_controller.py::run_scan_async` drives that
+generator one step per `QTimer.singleShot(0, ...)` callback, which keeps
+the Qt event loop responsive without ever leaving the main thread.
+
+Worker threads are reserved for work that does **not** touch 3ds Max
+scene state: file hashing, image metadata reads, JSON/report processing,
+and (in future milestones) network requests. No such worker-thread code
+exists yet in this phase.
+
+## Chunked / incremental scanning
+
+`DiagnosticEngine.iter_run()` is a generator that publishes a batch's
+events and then yields, handing control back to whatever drove it.
+`DemoScanner` simulates four stages (environment, geometry, materials,
+textures) to exercise this path end to end; production scanners will
+plug into the same generator contract when they process real scene
+batches.
+
+## Error UX
+
+Adapters and rules never raise into the UI layer uncaught — failures are
+logged (`logging/logger.py`) and surfaced as a friendly status message
+(e.g. `EnvironmentView` shows "Partial" when `EnvironmentReport.errors`
+is non-empty) rather than a raw traceback. Full tracebacks only ever go
+to the log file, never directly into a widget.
