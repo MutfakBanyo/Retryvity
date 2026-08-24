@@ -44,8 +44,14 @@
 	python.Execute pyPathLine
 
 	-- 2. Register the macroScript (defines launchCoronaDoctor() and the
-	--    CoronaDoctor_Launch macroScript) for this session.
-	fileIn helpersPath
+	--    CoronaDoctor_Launch macroScript) for this session. Wrapped in
+	--    try/catch so a problem here doesn't block opening the panel
+	--    directly in step 5 below.
+	try (
+		fileIn helpersPath
+	) catch (
+		format "Corona Doctor: macroScript registration skipped (%)\n" (getCurrentException())
+	)
 
 	-- 3. Write a startup script so steps 1-2 happen automatically every
 	--    time 3ds Max opens, without needing to drag this file again.
@@ -91,8 +97,11 @@
 		format "Corona Doctor: menu setup skipped (%)\n" (getCurrentException())
 	)
 
-	-- 5. Open the panel right now.
-	launchCoronaDoctor()
+	-- 5. Open the panel right now. Called directly via python.Execute
+	--    (rather than the launchCoronaDoctor() MAXScript function defined
+	--    by the fileIn above) because a function defined by a nested
+	--    fileIn is not reliably visible in this script's own scope.
+	python.Execute "from corona_doctor.bootstrap import show_corona_doctor; show_corona_doctor()"
 
 	messageBox (
 		"Corona Doctor kuruldu.\n\n" +
