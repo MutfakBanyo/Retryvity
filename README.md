@@ -1,7 +1,7 @@
 # Corona Doctor
 
 Corona Doctor is a diagnostic, optimization and repair assistant for
-**Autodesk 3ds Max 2026.3+** running **Chaos Corona 15+**.
+**Autodesk 3ds Max 2026.2+** running **Chaos Corona 15+**.
 
 ## Development stage
 
@@ -19,7 +19,7 @@ rules (texture, material, geometry, lighting checks, etc.) — see
 | Component | Requirement |
 |---|---|
 | OS | Windows 10/11 x64 |
-| 3ds Max | 2026.3+ |
+| 3ds Max | 2026.2+ |
 | Python | 3.11.x (the runtime bundled with 3ds Max) |
 | Qt | 6.5.x (as bundled with 3ds Max) |
 | UI toolkit | PySide6 |
@@ -64,7 +64,7 @@ tests run outside 3ds Max.
 python3 -m pytest corona_doctor/tests
 ```
 
-**Inside 3ds Max 2026.3+, without the installer** (e.g. from the
+**Inside 3ds Max 2026.2+, without the installer** (e.g. from the
 MAXScript Listener or Python console), useful for quick one-off testing:
 
 ```python
@@ -83,6 +83,19 @@ run_host_validation()
 
 See `docs/HOST_VALIDATION.md` for what this checks and what still
 requires manual verification.
+
+For a deeper, developer-only dump of everything Corona Doctor can
+introspect about the running host (raw + normalized versions, every
+discoverable Corona/Chaos runtime symbol, active-renderer properties),
+run:
+
+```python
+from corona_doctor.devtools.runtime_probe import run_runtime_probe
+run_runtime_probe()
+```
+
+This is strictly read-only — see `docs/HOST_VALIDATION.md` for details
+and where the JSON report is written.
 
 ## Documentation
 

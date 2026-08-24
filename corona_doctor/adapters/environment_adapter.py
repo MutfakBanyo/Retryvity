@@ -41,28 +41,34 @@ class EnvironmentAdapter:
         pyside_version = _safe(_detect_pyside_version) or "unknown"
 
         max_version = "unknown"
+        max_version_raw = "unknown"
         if self._max.is_available():
             detected = _safe(self._max.get_max_version_string)
             max_version = detected or "unknown"
+            max_version_raw = _safe(self._max.get_max_version_raw) or "unknown"
             if detected is None:
                 errors.append("Could not read 3ds Max version string.")
         max_supported = is_at_least(max_version, MIN_3DS_MAX_VERSION) if max_version != "unknown" else None
 
-        corona_detected = _safe(self._corona.is_installed)
-        corona_renderer_class = _safe(self._corona.get_renderer_class) or "unknown"
+        detection = self._corona.detect()
+        corona_detected = detection.installed
         current_renderer = _safe(self._max.get_current_renderer_class_name) or "unknown"
 
         capabilities = _build_capabilities(self._max, self._corona, corona_detected)
 
         return EnvironmentReport(
             max_version=max_version,
+            max_version_raw=max_version_raw,
             max_version_supported=max_supported,
             python_version=python_version,
             qt_version=qt_version,
             pyside_version=pyside_version,
             corona_detected=corona_detected,
-            corona_renderer_class=corona_renderer_class,
-            corona_version="unknown",
+            corona_active=detection.active,
+            corona_renderer_class=detection.renderer_class or "unknown",
+            corona_renderer_string=detection.renderer_string or "unknown",
+            corona_version=detection.version or "unknown",
+            corona_confidence=detection.confidence,
             current_renderer=current_renderer,
             capabilities=capabilities,
             errors=tuple(errors),

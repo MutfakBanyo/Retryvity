@@ -16,6 +16,7 @@ def test_max_adapter_reports_unavailable_outside_max():
     adapter = MaxAdapter()
     assert adapter.is_available() is False
     assert adapter.get_max_version_string() is None
+    assert adapter.get_max_version_raw() is None
     assert adapter.get_max_main_window() is None
     assert adapter.get_current_renderer_class_name() is None
     assert adapter.get_scene_object_count() is None
@@ -27,11 +28,20 @@ def test_corona_adapter_reports_unknown_outside_max():
     assert adapter.is_active_renderer() is None
     assert adapter.get_renderer_class() is None
     assert adapter.get_available_properties() == ()
+    assert adapter.discover_symbols("corona") == ()
+
+    detection = adapter.detect()
+    assert detection.installed is None
+    assert detection.active is None
+    assert detection.confidence == "unknown"
 
 
 def test_environment_adapter_never_raises_outside_max():
     report = EnvironmentAdapter().probe()
     assert report.max_version == "unknown"
+    assert report.max_version_raw == "unknown"
     assert report.corona_detected is None
+    assert report.corona_active is None
+    assert report.corona_confidence == "unknown"
     assert report.python_version  # e.g. "3.11.x"
     assert len(report.capabilities) > 0

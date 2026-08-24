@@ -2,9 +2,13 @@
 
 ## Hard compatibility rules
 
-- Target **3ds Max 2026.3+** only. Never assume compatibility with 2025
+- Target **3ds Max 2026.2+** only. Never assume compatibility with 2025
   or older — 3ds Max version APIs, Python version, and Qt version all
-  shifted around the 2025→2026 line.
+  shifted around the 2025→2026 line. (Confirmed real dev workstation:
+  3ds Max 2026.2, Python 3.11.12, Qt 6.5.3.) If a future feature
+  genuinely needs 2026.3+, gate it behind a capability/feature flag
+  (`compatibility/feature_flags.py`) rather than raising the floor for
+  the whole application.
 - **Python 3.11** — the interpreter bundled with 3ds Max. Do not use
   syntax or stdlib features newer than 3.11.
 - **PySide6 / Qt 6.5.x** only. Never `import PySide2` or assume Qt5
@@ -20,6 +24,23 @@
   presence or behavior is uncertain, probe for it
   (`adapters/corona_adapter.py::get_available_properties`) and expose the
   result through `compatibility/capabilities.py` rather than assuming it.
+- **Corona's "installed renderer class" and "active renderer class" are
+  different strings — confirmed on a real host.** `rt.renderers.classes`
+  lists the registered class as `CoronaRenderer`; once Corona is the
+  active renderer, `str(rt.classOf(rt.renderers.current))` returns
+  `Corona`. Never collapse these into one constant or assume a symbol's
+  existence means it is the active renderer's class name — see
+  `adapters/corona_adapter.py`'s module docstring and
+  `CoronaAdapter.detect()`.
+- Corona/Chaos runtime symbol discovery (`CoronaAdapter.discover_symbols`)
+  uses `dir(pymxs.runtime)` filtered by substring — read-only, no
+  instantiation. Do not assume every discovered `*corona*` name is Chaos
+  API; the project's own MAXScript/Python entry points
+  (`launchCoronaDoctor`, `show_corona_doctor`) also match and are
+  classified as `internal_tooling`.
+- No Corona version number is available through a documented, pymxs-safe
+  runtime property. `CoronaAdapter.detect().version` is `None` until one
+  is found — never infer it from `MIN_CORONA_VERSION`.
 - No pip packages beyond the Python standard library + the versions of
   PySide6/pymxs/qtmax bundled with 3ds Max. Do not `pip install` anything
   into the 3ds Max Python environment.

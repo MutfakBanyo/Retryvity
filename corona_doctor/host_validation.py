@@ -28,7 +28,7 @@ def run_host_validation() -> dict[str, str]:
     lines = ["Corona Doctor Host Validation", f"Version: {__version__}", ""]
 
     report = EnvironmentAdapter().probe()
-    lines.append(f"3ds Max:  {report.max_version}")
+    lines.append(f"3ds Max:  {report.max_version}  (raw: {report.max_version_raw})")
     lines.append(f"Python:   {report.python_version}")
     lines.append(f"Qt:       {report.qt_version}")
     lines.append(
@@ -59,13 +59,26 @@ def run_host_validation() -> dict[str, str]:
         results["environment_scan"] = f"FAIL ({exc})"
     lines.append(f"Environment scan:   {results['environment_scan']}")
 
-    # Capability probe
+    # Capability probe — PASS means the probe *ran*, not that every
+    # capability was found. Corona installation/active/version state is
+    # reported separately below; UNKNOWN there is not a probe failure.
     try:
         assert report.capabilities, "capability list was empty"
         results["capability_probe"] = "PASS"
     except Exception as exc:  # noqa: BLE001
         results["capability_probe"] = f"FAIL ({exc})"
-    lines.append(f"Capability probe:   {results['capability_probe']}")
+    lines.append(f"Capability probe:      {results['capability_probe']}")
+
+    def _tri(value: bool | None) -> str:
+        return "PASS" if value is True else ("FAIL" if value is False else "UNKNOWN")
+
+    results["corona_installed"] = _tri(report.corona_detected)
+    results["corona_active"] = _tri(report.corona_active)
+    results["corona_version"] = "PASS" if report.corona_version != "unknown" else "UNKNOWN"
+    lines.append(f"Corona installation:   {results['corona_installed']}")
+    lines.append(f"Corona active:         {results['corona_active']}")
+    lines.append(f"Corona version:        {results['corona_version']} ({report.corona_version})")
+    lines.append(f"Corona confidence:     {report.corona_confidence}")
 
     # Demo scan
     try:

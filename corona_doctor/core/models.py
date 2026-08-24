@@ -145,13 +145,17 @@ class EnvironmentReport:
     """
 
     max_version: str = "unknown"
+    max_version_raw: str = "unknown"
     max_version_supported: bool | None = None
     python_version: str = "unknown"
     qt_version: str = "unknown"
     pyside_version: str = "unknown"
     corona_detected: bool | None = None
+    corona_active: bool | None = None
     corona_renderer_class: str = "unknown"
+    corona_renderer_string: str = "unknown"
     corona_version: str = "unknown"
+    corona_confidence: str = "unknown"
     current_renderer: str = "unknown"
     capabilities: tuple[Capability, ...] = field(default_factory=tuple)
     errors: tuple[str, ...] = field(default_factory=tuple)

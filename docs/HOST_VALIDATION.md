@@ -1,9 +1,16 @@
 # Host Validation
 
-Everything in this document requires a real **3ds Max 2026.3+** install,
+Everything in this document requires a real **3ds Max 2026.2+** install,
 ideally with **Chaos Corona 15+** licensed/active. None of it can be
 verified in a plain Python environment — that is why it is not part of
 the automated test suite.
+
+Real host observed on 2026-08-25 (dev workstation): 3ds Max 2026.2
+(`maxversion()` -> `#(28000, 68, 0, 28, 2, 0, 20659, 2026, ".2")`),
+Python 3.11.12, Qt 6.5.3, Corona active (`classOf(rt.renderers.current)`
+-> `Corona`, while `rt.renderers.classes` registers it as
+`CoronaRenderer` — these are two separate, confirmed-different facts,
+see `adapters/corona_adapter.py`).
 
 ## 1. Run the automated host validation script
 
@@ -20,22 +27,53 @@ Expected output shape:
 Corona Doctor Host Validation
 Version: 0.1.0-bootstrap
 
-3ds Max:  2026.3
+3ds Max:  2026.2  (raw: [28000, 68, 0, 28, 2, 0, 20659, 2026, '.2'])
 Python:   3.11.x
 Qt:       6.5.x
 Corona:   Detected
 
 Dock creation:      PASS
 Environment scan:   PASS
-Capability probe:   PASS
+Capability probe:      PASS
+Corona installation:   PASS
+Corona active:         PASS
+Corona version:        UNKNOWN (unknown)
+Corona confidence:     confirmed
 Demo scan:          PASS
 ```
+
+`Capability probe: PASS` means the probe *ran* successfully — it is not
+a verdict on whether Corona itself was found. `Corona version: UNKNOWN`
+is expected and correct (no safe runtime source for it exists yet) and
+must not be read as a failure; only `Corona installation`/`Corona
+active` reading `FAIL` (a hard `False`, not `UNKNOWN`) indicates a real
+problem.
 
 If any line reads `FAIL (...)`, the parenthetical contains the
 exception; check `corona_doctor`'s log file (see
 `logging/logger.py::default_log_path()`, typically
 `%LOCALAPPDATA%\CoronaDoctor\corona_doctor.log` on Windows) for the full
 traceback.
+
+### 1b. Comprehensive runtime capability probe (developer tooling)
+
+For a full, read-only dump — every discoverable `*corona*`/`*chaos*`
+runtime symbol (classified best-effort), the active renderer's property
+names, and both normalized/raw version strings — run:
+
+```python
+from corona_doctor.devtools.runtime_probe import run_runtime_probe
+run_runtime_probe()
+```
+
+This never creates, deletes, or modifies scene state, materials,
+selection, or renderer settings — it only uses `dir()`, `getPropNames()`,
+`str()`, and `classOf()`. It prints a short human-readable summary to the
+Listener and writes the full structured report to
+`<default_log_path().parent>/runtime_probe.json` (same folder as
+`corona_doctor.log`) for anything too long to read comfortably in the
+Listener (the full symbol lists, property names, per-step timings, and
+any errors encountered).
 
 ## 2. Launch and inspect the panel manually
 

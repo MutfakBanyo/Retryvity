@@ -23,6 +23,33 @@ except ImportError:  # pragma: no cover - exercised only inside 3ds Max
     qtmax = None
 
 
+def _parse_maxversion_array(version_info) -> str | None:
+    """Normalize ``maxversion()``'s array into "<year>.<service pack>".
+
+    Confirmed on a real 3ds Max 2026.2 host:
+    ``#(28000, 68, 0, 28, 2, 0, 20659, 2026, ".2")`` -> index 7 is the
+    marketing year (2026), index 8 is the service-pack suffix (".2") ->
+    "2026.2". This is empirical, not documented Autodesk behavior, so it
+    degrades to ``None`` (caller falls back to other sources) rather than
+    guessing when the shape does not match.
+    """
+
+    try:
+        items = list(version_info)
+    except Exception:  # noqa: BLE001
+        return None
+    if len(items) < 9:
+        return None
+    try:
+        year = int(items[7])
+    except (TypeError, ValueError):
+        return None
+    suffix = str(items[8])
+    if suffix.startswith("."):
+        return f"{year}{suffix}"
+    return f"{year}.{suffix}" if suffix else str(year)
+
+
 class MaxAdapter:
     """Safe, minimal surface over the 3ds Max host APIs."""
 
@@ -30,10 +57,14 @@ class MaxAdapter:
         return pymxs is not None
 
     def get_max_version_string(self) -> str | None:
-        """Return the human-readable 3ds Max version, e.g. "2026.3".
+        """Return the normalized, human-readable 3ds Max version, e.g. "2026.2".
 
         Uses ``maxversion()`` via MAXScript through pymxs because pymxs
         itself does not expose a friendly product-year string directly.
+        Falls back to ``getFileVersion``'s product string, and finally to
+        the raw array's ``str()`` if neither can be parsed — callers that
+        need the untouched raw value should use
+        :meth:`get_max_version_raw` instead.
         """
 
         if pymxs is None:
@@ -41,9 +72,11 @@ class MaxAdapter:
         try:
             rt = pymxs.runtime
             version_info = rt.maxversion()
-            # maxversion() returns an array; index 0 encodes an internal
-            # version number, not the marketing year, so prefer the
-            # dedicated product string when available.
+
+            parsed = _parse_maxversion_array(version_info)
+            if parsed:
+                return parsed
+
             product_string = getattr(rt, "getFileVersion", None)
             if callable(product_string):
                 try:
@@ -52,6 +85,16 @@ class MaxAdapter:
                     pass
             return str(version_info)
         except Exception:  # noqa: BLE001 - never let a probe crash the host
+            return None
+
+    def get_max_version_raw(self) -> str | None:
+        """Return the untouched ``str(maxversion())`` array, for diagnostics."""
+
+        if pymxs is None:
+            return None
+        try:
+            return str(pymxs.runtime.maxversion())
+        except Exception:  # noqa: BLE001
             return None
 
     def get_max_main_window(self):
