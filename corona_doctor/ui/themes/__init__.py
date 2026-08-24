@@ -7,6 +7,7 @@ drifts between the two.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from corona_doctor.ui.design.colors import Color
@@ -43,4 +44,4 @@ def load_dark_theme() -> str:
         "SPACING_MD": Spacing.MD,
         "SPACING_LG": Spacing.LG,
     }
-    return template.format(**tokens)
+    return re.sub(r"\{([A-Z_]+)\}", lambda m: str(tokens[m.group(1)]), template)
