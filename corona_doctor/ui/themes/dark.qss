@@ -1,0 +1,121 @@
+/* Corona Doctor dark theme.
+   Values here must mirror corona_doctor/ui/design/colors.py and
+   metrics.py. This file is loaded and token-substituted by
+   ui/themes/__init__.py:load_dark_theme() rather than referenced by
+   raw path, so the Python tokens remain the single source of truth. */
+
+QWidget {
+    background-color: {BACKGROUND};
+    color: {TEXT_PRIMARY};
+    font-family: {FONT_FAMILY};
+    font-size: {BODY_SIZE}px;
+}
+
+QWidget#Surface {
+    background-color: {SURFACE};
+    border: 1px solid {BORDER_SUBTLE};
+    border-radius: {RADIUS_MEDIUM}px;
+}
+
+QWidget#SurfaceRaised {
+    background-color: {SURFACE_RAISED};
+    border: 1px solid {BORDER};
+    border-radius: {RADIUS_MEDIUM}px;
+}
+
+QLabel#Title {
+    font-size: {TITLE_SIZE}px;
+    font-weight: 600;
+    color: {TEXT_PRIMARY};
+}
+
+QLabel#Caption {
+    font-size: {CAPTION_SIZE}px;
+    color: {TEXT_MUTED};
+}
+
+QLabel#Secondary {
+    color: {TEXT_SECONDARY};
+}
+
+QPushButton#Primary {
+    background-color: {ACCENT};
+    color: {TEXT_ON_ACCENT};
+    border: none;
+    border-radius: {RADIUS_SMALL}px;
+    padding: {SPACING_SM}px {SPACING_LG}px;
+    font-weight: 600;
+}
+
+QPushButton#Primary:hover {
+    background-color: {ACCENT_HOVER};
+}
+
+QPushButton#Primary:disabled {
+    background-color: {SURFACE_OVERLAY};
+    color: {TEXT_MUTED};
+}
+
+QPushButton#Secondary {
+    background-color: {SURFACE_RAISED};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {BORDER};
+    border-radius: {RADIUS_SMALL}px;
+    padding: {SPACING_SM}px {SPACING_LG}px;
+}
+
+QPushButton#Secondary:hover {
+    background-color: {SURFACE_OVERLAY};
+}
+
+QPushButton#NavItem {
+    text-align: left;
+    background-color: transparent;
+    color: {TEXT_SECONDARY};
+    border: none;
+    border-radius: {RADIUS_SMALL}px;
+    padding: {SPACING_SM}px {SPACING_MD}px;
+}
+
+QPushButton#NavItem:hover {
+    background-color: {SURFACE_RAISED};
+    color: {TEXT_PRIMARY};
+}
+
+QPushButton#NavItem:checked {
+    background-color: {ACCENT_MUTED};
+    color: {TEXT_PRIMARY};
+    font-weight: 600;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: {BORDER};
+    border-radius: {RADIUS_SMALL}px;
+    min-height: 24px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: {TEXT_MUTED};
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+QListView {
+    background-color: transparent;
+    border: none;
+    outline: none;
+}
+
+QFrame#Divider {
+    background-color: {BORDER_SUBTLE};
+    max-height: 1px;
+    min-height: 1px;
+}
