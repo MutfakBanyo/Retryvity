@@ -29,7 +29,28 @@ rules (texture, material, geometry, lighting checks, etc.) — see
 3ds Max 2025 and older, MaxPlus, WinForms/WPF, PySide2/Qt5, and MAXScript
 rollout UIs are explicitly out of scope.
 
-## Launching the development build
+## Installing inside 3ds Max (drag & drop)
+
+1. Get this repository onto the Windows machine that has 3ds Max
+   installed (clone it, or download it as a folder) — do not move
+   `install_corona_doctor.ms` out of the repo root; it must stay next to
+   the `corona_doctor` folder.
+2. Open 3ds Max, then drag `install_corona_doctor.ms` from Explorer and
+   drop it onto the viewport.
+3. The panel opens immediately. A "Corona Doctor" menu is also added to
+   the main menu bar, and a small startup script is written to your user
+   startup scripts folder so Corona Doctor loads automatically on every
+   future 3ds Max launch — you don't need to drag the installer again.
+
+Safe to re-run: dropping the installer again just re-confirms the setup,
+it doesn't duplicate menus or path entries.
+
+To uninstall the auto-load, delete
+`CoronaDoctor_Startup.ms` from your 3ds Max user startup scripts folder
+(3ds Max menu: Scripting → Show MAXScript Listener, run
+`getDir #userStartupScripts` to find it).
+
+## Launching the development build (manual / advanced)
 
 Corona Doctor's core (`corona_doctor.core`, `.compatibility`,
 `.adapters`, `.scanners`, `.repair`, `.rules`, `.persistence`,
@@ -43,29 +64,25 @@ tests run outside 3ds Max.
 python3 -m pytest corona_doctor/tests
 ```
 
-**Inside 3ds Max 2026.3+:**
+**Inside 3ds Max 2026.3+, without the installer** (e.g. from the
+MAXScript Listener or Python console), useful for quick one-off testing:
 
-1. Make this repository's root directory importable, e.g. by adding it to
-   `sys.path` from a 3ds Max startup script, or by placing/symlinking the
-   `corona_doctor` package where 3ds Max's bundled Python can find it.
-2. Run the MAXScript bridge (`corona_doctor/maxscript/helpers.ms`) once
-   to register the `CoronaDoctor_Launch` macroScript, or call directly
-   from the Python listener:
+```python
+import sys
+sys.path.append(r"C:\path\to\this\repo")
+from corona_doctor.bootstrap import show_corona_doctor
+show_corona_doctor()
+```
 
-   ```python
-   from corona_doctor.bootstrap import show_corona_doctor
-   show_corona_doctor()
-   ```
+To validate a build inside a real 3ds Max install, run:
 
-3. To validate a build inside a real 3ds Max install, run:
+```python
+from corona_doctor.host_validation import run_host_validation
+run_host_validation()
+```
 
-   ```python
-   from corona_doctor.host_validation import run_host_validation
-   run_host_validation()
-   ```
-
-   See `docs/HOST_VALIDATION.md` for what this checks and what still
-   requires manual verification.
+See `docs/HOST_VALIDATION.md` for what this checks and what still
+requires manual verification.
 
 ## Documentation
 
