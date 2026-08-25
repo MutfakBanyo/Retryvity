@@ -78,8 +78,7 @@ any errors encountered).
 ## 1c. Scene Inventory + Texture Doctor probe (production scanner)
 
 ```python
-from corona_doctor.devtools.texture_probe import run_texture_probe
-run_texture_probe()
+from corona_doctor.devtools.texture_probe import run_texture_probe; run_texture_probe()
 ```
 
 Read-only — see docs/TEXTURE_DOCTOR.md for the full guarantee, what it

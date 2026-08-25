@@ -16,5 +16,19 @@ def show_corona_doctor() -> None:
     launch()
 
 
+def show_corona_doctor_about() -> None:
+    """Show (or focus) the panel and switch it to the About section.
+
+    The "About Corona Doctor" menu command's target — see
+    ``maxscript/helpers.ms``'s ``CoronaDoctor_About`` macroScript. Safe to
+    call repeatedly, and safe to call before the panel has ever been
+    opened this session (launches it first).
+    """
+
+    from corona_doctor.app.application import show_about
+
+    show_about()
+
+
 if __name__ == "__main__":  # pragma: no cover - manual/host invocation only
     show_corona_doctor()

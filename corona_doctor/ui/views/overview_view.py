@@ -15,6 +15,7 @@ from corona_doctor.core.texture_models import SceneInventory
 from corona_doctor.ui.components.health_score import HealthScoreWidget
 from corona_doctor.ui.components.section_header import SectionHeader
 from corona_doctor.ui.design.metrics import Spacing
+from corona_doctor.ui.qt_safe import ignore_signal_args
 
 
 class _StatTile(QWidget):
@@ -49,7 +50,11 @@ class OverviewView(QWidget):
 
         self._scan_button = QPushButton("Scan Scene", self)
         self._scan_button.setObjectName("Primary")
-        self._scan_button.clicked.connect(self.scan_requested.emit)
+        # scan_requested is a zero-arg Signal(); clicked can pass a bool
+        # (or, on the real host, an unexpected argument count - see
+        # ui/qt_safe.py) - never connect a signal's bare .emit directly to
+        # another signal without an arity-safe wrapper in between.
+        self._scan_button.clicked.connect(ignore_signal_args(self.scan_requested.emit))
 
         header = SectionHeader("Scene Health", trailing=self._scan_button, parent=self)
         root.addWidget(header)

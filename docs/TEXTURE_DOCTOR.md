@@ -317,11 +317,12 @@ existing callers; `scanner.result` is additive, not a replacement.
 Already validated once against a real production scene (462 nodes, 262
 unique materials, 240 texture references, 0 scanner errors — see git
 history around the "real host validation" milestone). Re-run after any
-scanner/rule/report change from the 3ds Max Python Listener:
+scanner/rule/report change from the 3ds Max Python Listener. Kept to one
+line deliberately — pasting a multi-line command into the 3ds Max Python
+Listener has proven less reliable in practice than a single line:
 
 ```python
-from corona_doctor.devtools.texture_probe import run_texture_probe
-run_texture_probe()
+from corona_doctor.devtools.texture_probe import run_texture_probe; run_texture_probe()
 ```
 
 This scans the current scene and prints three clearly separated

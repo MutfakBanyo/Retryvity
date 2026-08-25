@@ -27,7 +27,9 @@ from corona_doctor.logging.logger import get_logger
 from corona_doctor.scanners.environment_scanner import EnvironmentScanner
 from corona_doctor.scanners.texture_doctor_scanner import TextureDoctorScanner
 from corona_doctor.ui.design.metrics import Spacing
+from corona_doctor.performance.profiler import Profiler
 from corona_doctor.ui.icons.icon_registry import get_icon_registry
+from corona_doctor.ui.qt_safe import ignore_signal_args
 from corona_doctor.ui.responsive.breakpoint_manager import BreakpointManager, LayoutState
 from corona_doctor.ui.scan_controller import run_scan_async
 from corona_doctor.ui.themes import load_dark_theme
@@ -50,10 +52,18 @@ _SECTION_INDEX = {"overview": 0, "diagnostics": 1, "textures": 2, "environment":
 
 
 class MainPanel(QWidget):
-    def __init__(self, services: AppServices, parent: QWidget | None = None) -> None:
+    def __init__(self, services: AppServices, parent: QWidget | None = None, profiler: Profiler | None = None) -> None:
         super().__init__(parent)
         self._services = services
-        self.setStyleSheet(load_dark_theme())
+        # Optional: app/application.py::launch() passes its own profiler so
+        # these stages show up in one bootstrap timing report; construction
+        # outside launch() (tests, host-independent tooling) still works
+        # with a throwaway Profiler(). See docs/ARCHITECTURE.md, "Startup
+        # performance".
+        profiler = profiler or Profiler()
+
+        with profiler.measure("bootstrap.theme"):
+            self.setStyleSheet(load_dark_theme())
 
         self._breakpoints = BreakpointManager(self)
         self._breakpoints.state_changed.connect(self._on_layout_state_changed)
@@ -63,7 +73,8 @@ class MainPanel(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        self._nav = self._build_nav()
+        with profiler.measure("bootstrap.nav_icons"):
+            self._nav = self._build_nav()
         root.addWidget(self._nav)
 
         divider = QFrame(self)
@@ -71,14 +82,15 @@ class MainPanel(QWidget):
         divider.setFrameShape(QFrame.Shape.VLine)
         root.addWidget(divider)
 
-        self._stack = QStackedWidget(self)
-        self._overview = OverviewView(self._stack)
-        self._diagnostics = DiagnosticsView(self._stack)
-        self._textures = TexturesView(self._stack)
-        self._environment = EnvironmentView(self._stack)
-        self._about = AboutView(self._stack)
-        for view in (self._overview, self._diagnostics, self._textures, self._environment, self._about):
-            self._stack.addWidget(view)
+        with profiler.measure("bootstrap.views"):
+            self._stack = QStackedWidget(self)
+            self._overview = OverviewView(self._stack)
+            self._diagnostics = DiagnosticsView(self._stack)
+            self._textures = TexturesView(self._stack)
+            self._environment = EnvironmentView(self._stack)
+            self._about = AboutView(self._stack)
+            for view in (self._overview, self._diagnostics, self._textures, self._environment, self._about):
+                self._stack.addWidget(view)
         root.addWidget(self._stack, stretch=1)
 
         self._overview.scan_requested.connect(self._start_scene_scan)
@@ -86,7 +98,8 @@ class MainPanel(QWidget):
         self._unsubscribe = services.bus.subscribe(self._on_event)
 
         self._show_section("overview")
-        self._start_environment_probe()
+        with profiler.measure("bootstrap.scan_scheduling"):
+            self._start_environment_probe()
 
     # -- navigation -----------------------------------------------------
 
@@ -114,13 +127,19 @@ class MainPanel(QWidget):
             button.setObjectName("NavItem")
             button.setCheckable(True)
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            button.clicked.connect(lambda _checked, sid=section_id: self._show_section(sid))
+            button.clicked.connect(ignore_signal_args(lambda sid=section_id: self._show_section(sid)))
             self._nav_group.addButton(button)
             self._nav_buttons[section_id] = button
             layout.addWidget(button)
 
         layout.addStretch(1)
         return nav
+
+    def show_about_section(self) -> None:
+        """Switch to the About section — the "About Corona Doctor" menu
+        command's target (see app/application.py::show_about)."""
+
+        self._show_section("about")
 
     def _show_section(self, section_id: str) -> None:
         index = _SECTION_INDEX.get(section_id, 0)

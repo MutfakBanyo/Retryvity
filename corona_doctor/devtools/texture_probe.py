@@ -18,10 +18,11 @@ depends on it (see docs/TEXTURE_DOCTOR.md, "Production result model") —
 it depends on the production scanner and report formatter, not the other
 way around.
 
-Run from the 3ds Max Python listener::
+Run from the 3ds Max Python listener (kept to one line deliberately — a
+pasted multi-line command has proven less reliable in the real Max
+listener than a single line)::
 
-    from corona_doctor.devtools.texture_probe import run_texture_probe
-    run_texture_probe()
+    from corona_doctor.devtools.texture_probe import run_texture_probe; run_texture_probe()
 """
 
 from __future__ import annotations

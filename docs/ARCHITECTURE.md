@@ -194,13 +194,109 @@ that are genuinely a level up in the visual hierarchy, not everywhere.
 
 ## Startup performance
 
-`app/application.py::launch()` profiles `bootstrap.total` (services +
-UI shell construction) via `performance/profiler.py` and logs it on every
-launch — watch this number, don't let it regress. A real-host measurement
-recorded ~23.7ms for the full shell (five eagerly-constructed views,
-nav, and the dark theme QSS load). Additions to the shell (the About
-screen, the brand-mark SVG render) follow the same pattern already used
-for the four other views and the nav's SVG icon rendering — a handful of
-label/layout widgets and one more cached SVG-to-QPixmap render — not a
-new class of cost. Anything genuinely expensive (a real scan) never runs
-during `launch()`; it only runs after the user clicks "Scan Scene".
+`app/application.py::launch()` profiles `bootstrap.total` (services + UI
+shell construction) via `performance/profiler.py` and logs it (INFO) on
+every launch; a per-stage breakdown logs at DEBUG. `ui/main_window.py`'s
+`MainPanel.__init__` accepts that same `Profiler` and measures its own
+sub-stages: `bootstrap.theme` (QSS load), `bootstrap.nav_icons` (SVG
+icon render via `ui/icons/icon_registry.py`), `bootstrap.views` (all five
+view widgets, including the model objects each view constructs
+internally — `FindingsModel`, `TextureTableModel`, etc. — there is no
+separate model-construction stage since nothing in this codebase builds
+models outside their owning view's `__init__`), and
+`bootstrap.scan_scheduling` (`_start_environment_probe()`, which only
+*schedules* a probe via `QTimer` — the probe itself runs later, off this
+timer). `_create_dock_widget` additionally measures
+`bootstrap.dock_registration` around `dock_manager.create_docked_panel`.
+
+An earlier pre-UI/pre-branding measurement recorded ~23.7ms for
+`bootstrap.total`; a later real-host measurement (3ds Max 2026.2,
+PySide6 6.5.3, after the v0.2 typography/branding/About-screen additions)
+recorded `bootstrap.ui_shell` ≈209ms / `bootstrap.total` ≈216ms — do not
+treat the old 23.7ms figure as the current target; it predates the full
+v0.2 UI. The per-stage instrumentation above exists to explain *where*
+time within that ~209ms goes on a future real-host run, not to chase the
+old number back down — see the milestone report for a local (non-3ds-Max,
+offscreen-Qt) stage breakdown that at least rules out any obvious
+duplicated/accidental work in the Python-side construction path; the
+delta between that and the real host's much larger number is presumed to
+be genuine 3ds Max/native-dock/first-touch-disk-I/O overhead this
+sandboxed dev environment cannot reproduce. Anything genuinely expensive
+(a real scan) never runs during `launch()`; it only runs after the user
+clicks "Scan Scene".
+
+## Qt signal-arity safety
+
+Never write `signal.connect(lambda x: ...)` (or connect a signal
+directly to another signal's bare `.emit`) when the handler doesn't
+actually need the signal's argument — a real 3ds Max 2026.2 host called a
+`QPushButton.clicked`-connected lambda with a different argument count
+than PySide6's documented `clicked(bool checked=False)`, breaking a
+lambda that required exactly one positional parameter (see `ui/qt_safe.py`
+for the fix and its full writeup, and `tests/test_qt_safe.py` for the
+regression coverage). Use `ui/qt_safe.py::ignore_signal_args` for any
+connection that only needs to trigger a fixed action; give a handler that
+DOES need the signal's value a default (`def handler(self, checked:
+bool = False)`) rather than a bare required parameter, even for signals
+Qt documents as always carrying exactly one argument (`toggled(bool)`,
+`linkActivated(str)`) — this codebase treats every Qt signal connection
+as arity-untrusted, not just the ones already known to be fragile.
+
+## Application lifecycle singleton
+
+`app/lifecycle.py` owns the one module-level reference to the live dock
+widget; nothing else keeps its own copy. `app/application.py::launch()`
+always calls `show_or_focus_existing()` first and returns immediately if
+it reused an instance — a second `launch()` (or `show_corona_doctor()`,
+or the "Open Corona Doctor" menu command) never constructs a second
+`MainPanel`/`QDockWidget`. A stale reference (the C++ object already
+destroyed — e.g. 3ds Max closed the dock without going through
+`_CoronaDoctorDock.closeEvent`) is detected via the `RuntimeError` that
+raises and cleared automatically, so the *next* `launch()` builds a fresh
+instance rather than failing forever. See `tests/test_lifecycle.py`
+(pure Python) and `tests/test_application_lifecycle.py` (real,
+offscreen-Qt end-to-end) for the regression coverage.
+
+## MAXScript bridge
+
+`corona_doctor/maxscript/helpers.ms` is the only MAXScript file this
+project ships (besides the drag-and-drop `install_corona_doctor.ms`) —
+kept small and auditable on purpose. It defines two macroScripts
+(`CoronaDoctor_Launch`, `CoronaDoctor_About`) that each do nothing but
+call `python.Execute` with a one-line import+call string targeting
+`corona_doctor/bootstrap.py`'s two public entry points, plus
+`registerCoronaDoctorMenu()` for the 3ds Max 2025+ menu system (see
+below). Every helper's docstring records why pymxs alone was
+insufficient, its target Max version, and whether it mutates scene
+state — do not add a MAXScript helper without that.
+
+## 3ds Max 2025+ menu system
+
+3ds Max 2025 removed the legacy MAXScript Menu Manager
+(`menuMan`/`menuMan.getMainMenuBar()`) entirely; calling it on 3ds Max
+2026.2 raises `Unknown property: getMainMenuBar in undefined` because
+`menuMan`'s main-menu-bar concept no longer resolves under the
+replacement Workspace/CUI-driven system (confirmed via Autodesk's own
+2025 MAXScript help and community reports — see
+`maxscript/helpers.ms::registerCoronaDoctorMenu`'s docstring for the
+exact sources). The replacement is callback-driven: register a handler
+for the `#cuiRegisterMenus` event; 3ds Max invokes it with a
+`CuiMenuManager` (via `callbacks.notificationParam()`) whenever it
+(re)builds the menu bar — in practice, once at 3ds Max startup, not
+synchronously when a plugin registers mid-session. There is no
+documented way to force an immediate rebuild, so a menu registered this
+session becomes visible starting the *next* 3ds Max restart, never
+immediately — this is expected behavior, not a bug, and
+`install_corona_doctor.ms` explicitly tells the user so.
+
+### Menu registration failure is non-fatal
+
+Every step of `registerCoronaDoctorMenu()` — the callback registration
+itself and everything the callback does — is wrapped in `try`/`catch`
+and logs via `format ... \n` (MAXScript listener output only, never a
+`messageBox`) on failure. Corona Doctor opening is never gated on menu
+registration succeeding: `install_corona_doctor.ms` calls
+`show_corona_doctor()` unconditionally, after the menu-registration
+attempt, regardless of whether that attempt succeeded. An older/
+unsupported 3ds Max host (no `#cuiRegisterMenus` callback) degrades to
+one quiet log line per session with no menu, not a startup exception.

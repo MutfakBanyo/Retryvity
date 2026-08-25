@@ -48,7 +48,10 @@ class _LinkLabel(QLabel):
         self.setObjectName("Secondary")
         self.linkActivated.connect(self._open)
 
-    def _open(self, _href: str) -> None:
+    def _open(self, _href: str = "") -> None:
+        # _href unused (the URL to open is fixed per-label at construction,
+        # not read from the signal) - defaulted for arity tolerance, see
+        # ui/qt_safe.py's module docstring.
         QDesktopServices.openUrl(QUrl(self._url))
 
 
@@ -125,7 +128,13 @@ class AboutView(QWidget):
 
         root.addStretch(1)
 
-    def _on_env_toggle(self, checked: bool) -> None:
+    def _on_env_toggle(self, checked: bool = False) -> None:
+        # Qt's `toggled(bool)` is documented as always carrying exactly
+        # one argument, unlike `clicked(bool checked=False)` - but the
+        # real-host arity divergence found on `clicked` (see
+        # ui/qt_safe.py) means every button-family signal in this
+        # codebase gets an arity-tolerant handler on audit, not just the
+        # ones already known to be fragile.
         self._env_surface.setVisible(checked)
         self._env_toggle.setText("Hide environment details" if checked else "Show environment details")
 

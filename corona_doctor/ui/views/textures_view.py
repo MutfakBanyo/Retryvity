@@ -164,10 +164,10 @@ class TexturesView(QWidget):
         for column in range(self._model.columnCount()):
             self._table.setColumnHidden(column, column in hidden)
 
-    def _on_search_changed(self, text: str) -> None:
+    def _on_search_changed(self, text: str = "") -> None:
         self._proxy.set_search_text(text)
 
-    def _on_filter_changed(self, _index: int) -> None:
+    def _on_filter_changed(self, _index: int = -1) -> None:
         self._proxy.set_status_filter(self._filter_combo.currentData())
 
     def _on_selection_changed(self) -> None:
