@@ -9,10 +9,12 @@ readable and consistent by construction. See docs/ARCHITECTURE.md,
 Font family falls back through the platform's standard UI faces; Corona
 Doctor does not bundle a custom font in this phase.
 
-Sizes below were raised for v0.2 after real-host testing showed the
-previous scale (9-12px body/caption text) was uncomfortably small to read
-at normal viewing distance inside 3ds Max. Readability takes priority over
-fitting more information on screen — see docs/ARCHITECTURE.md.
+Sizes were raised for v0.2 after real-host testing showed the original
+scale (9-12px body/caption text) was uncomfortably small to read at
+normal viewing distance inside 3ds Max, then raised again by a further
+flat +4px across every token per direct user request. Readability takes
+priority over fitting more information on screen — see
+docs/ARCHITECTURE.md.
 """
 
 from __future__ import annotations
@@ -35,30 +37,30 @@ class Typography:
 
     # Panel-level branding text: the About screen's product name. Not used
     # for ordinary section headers — see SECTION_TITLE for those.
-    DISPLAY = TypeStyle(size=24, weight=700)
+    DISPLAY = TypeStyle(size=28, weight=700)
 
     # Major/top-level titles.
-    TITLE = TypeStyle(size=19, weight=700)
+    TITLE = TypeStyle(size=23, weight=700)
 
     # Section headers atop every screen (SectionHeader component) and
     # prominent in-panel headings (e.g. a details pane's title row).
-    SECTION_TITLE = TypeStyle(size=16, weight=600)
+    SECTION_TITLE = TypeStyle(size=20, weight=600)
 
     # Ordinary readable body text — the UI default (see QWidget in dark.qss).
-    BODY = TypeStyle(size=13, weight=400)
-    BODY_EMPHASIS = TypeStyle(size=13, weight=600)
+    BODY = TypeStyle(size=17, weight=400)
+    BODY_EMPHASIS = TypeStyle(size=17, weight=600)
 
     # Secondary/supporting text: field labels, subordinate descriptions.
-    SECONDARY = TypeStyle(size=12, weight=400)
+    SECONDARY = TypeStyle(size=16, weight=400)
 
     # Genuinely secondary information only (empty states, timestamps,
     # per-tile labels) — never body copy.
-    CAPTION = TypeStyle(size=11, weight=500)
+    CAPTION = TypeStyle(size=15, weight=500)
 
-    BUTTON = TypeStyle(size=13, weight=600)
+    BUTTON = TypeStyle(size=17, weight=600)
 
     # Table/list cell text (texture table, finding rows).
-    TABLE = TypeStyle(size=12, weight=400)
+    TABLE = TypeStyle(size=16, weight=400)
 
     # Small status pills (severity/state badges).
-    BADGE = TypeStyle(size=11, weight=700, letter_spacing=0.3)
+    BADGE = TypeStyle(size=15, weight=700, letter_spacing=0.3)

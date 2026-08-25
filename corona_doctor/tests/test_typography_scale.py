@@ -26,11 +26,11 @@ def test_caption_text_meets_minimum_size():
 
 
 def test_section_titles_in_expected_range():
-    assert 15 <= Typography.SECTION_TITLE.size <= 17
+    assert 19 <= Typography.SECTION_TITLE.size <= 21
 
 
 def test_major_titles_in_expected_range():
-    assert 18 <= Typography.TITLE.size <= 22
+    assert 22 <= Typography.TITLE.size <= 26
 
 
 def test_caption_is_the_smallest_token():
