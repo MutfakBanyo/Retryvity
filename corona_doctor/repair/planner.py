@@ -279,3 +279,46 @@ def build_relink_plan(
             ),
         ),
     )
+
+
+def build_batch_relink_plan(accepted: Iterable[tuple[Iterable[ExternalTextureReference], str]]) -> RepairPlan:
+    """Combine several user-approved relinks into ONE plan — the Smart
+    Asset Recovery batch-accept path (see
+    ``smart_relink/session.py::SearchSession.accepted_pairs`` and
+    docs/SMART_RELINK.md, "Relink must use the Repair Engine").
+
+    ``accepted`` is ``[(refs_sharing_one_missing_path, chosen_path), ...]``
+    — every ref sharing a physical missing file relinks to the same
+    chosen path in one RELINK_TEXTURE operation each, so "one missing
+    file, many map nodes" (see ``smart_relink/models.py::MissingAsset``)
+    repairs through exactly this one plan. Deliberately not
+    ``repair/planner.py`` importing ``smart_relink`` — the dependency
+    runs the other way (smart_relink depends on repair, not vice versa),
+    so this takes plain ``ExternalTextureReference`` iterables rather
+    than a ``MissingAsset``.
+    """
+
+    operations: list[RepairOperation] = []
+    for refs, chosen_path in accepted:
+        for ref in refs:
+            operations.append(
+                RepairOperation(
+                    op_id=_new_id("op"),
+                    kind=OperationKind.RELINK_TEXTURE,
+                    reason="User-approved Smart Asset Recovery relink.",
+                    source=chosen_path,
+                    map_ref_id=ref.ref_id,
+                    map_handle=ref.map_handle,
+                    map_class=ref.map_class,
+                    source_property=ref.source_property,
+                    old_value=ref.path_info.raw_path,
+                    new_value=chosen_path,
+                )
+            )
+
+    return RepairPlan(
+        plan_id=_new_id("plan"),
+        kind="smart_relink_batch",
+        created_at=_now_iso(),
+        operations=tuple(operations),
+    )

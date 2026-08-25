@@ -20,7 +20,14 @@ from corona_doctor.adapters.repair_adapter import RepairAdapter
 from corona_doctor.core.texture_models import ExternalTextureReference
 from corona_doctor.repair import manifest as repair_manifest
 from corona_doctor.repair.models import RepairManifest, RepairPlan, RepairResult, RepairState
-from corona_doctor.repair.planner import RelinkCandidate, build_make_portable_plan, build_relink_plan, classify_candidates, find_relink_candidates
+from corona_doctor.repair.planner import (
+    RelinkCandidate,
+    build_batch_relink_plan,
+    build_make_portable_plan,
+    build_relink_plan,
+    classify_candidates,
+    find_relink_candidates,
+)
 from corona_doctor.repair.revert import build_revert_plan
 from corona_doctor.repair.transaction import apply_plan
 from corona_doctor.repair.verification import verify_repair
@@ -94,6 +101,18 @@ class RepairController:
         return build_relink_plan(ref, chosen_path)
 
     def apply_relink(self, plan: RepairPlan) -> RepairResult:
+        return self._apply_and_save(plan)
+
+    # -- Smart Asset Recovery (batch) ------------------------------------
+
+    def plan_batch_relink(self, accepted: Iterable[tuple[Iterable[ExternalTextureReference], str]]) -> RepairPlan:
+        """Combine every accepted Smart Relink candidate into ONE plan
+        — see ``repair/planner.py::build_batch_relink_plan`` and
+        docs/SMART_RELINK.md, "Relink must use the Repair Engine"."""
+
+        return build_batch_relink_plan(accepted)
+
+    def apply_batch_relink(self, plan: RepairPlan) -> RepairResult:
         return self._apply_and_save(plan)
 
     # -- Revert -------------------------------------------------------------

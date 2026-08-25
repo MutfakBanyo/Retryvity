@@ -429,6 +429,175 @@ def _build_multiple_object_usage(rt, asset_dir: Path) -> FixtureRecord:
     )
 
 
+# -- Smart Asset Recovery fixtures (CDT-SMART-001..005) ----------------------
+#
+# Each of these creates exactly one missing-texture scene reference (same
+# shape as CDT-TEX-001) whose ORIGINAL file is never written, plus zero or
+# more real files under a shared "recovery library" directory tree that
+# smart_relink's search index/scoring is validated against — see
+# docs/SMART_RELINK.md, "Torture scene extension".
+
+
+def _build_missing_reference(rt, asset_dir: Path, fixture_id: str, missing_filename: str) -> tuple:
+    """Shared shape for every CDT-SMART fixture: one node+material+bitmap
+    pointing at a path under ``asset_dir/missing_originals`` that is
+    deliberately never written. Returns ``(box, mtl, bitmap, missing_path)``."""
+
+    node_name = f"{fixture_id.replace('-', '_')}_Box"
+    mtl_name = f"{fixture_id.replace('-', '_')}_Mtl"
+    missing_path = str(asset_dir / "missing_originals" / missing_filename)
+
+    box = _make_box(rt, node_name)
+    mtl = _make_material(rt)
+    bitmap = _make_bitmap(rt, missing_path)
+    if mtl is not None:
+        mtl.name = mtl_name
+    attached = _attach_bitmap(rt, mtl, bitmap)
+    if box is not None and mtl is not None:
+        box.material = mtl
+
+    return box, mtl, bitmap, attached, missing_path, node_name, mtl_name
+
+
+def create_smart_relink_fixtures(rt, asset_dir: Path) -> list:
+    """Builds CDT-SMART-001..005 and their shared recovery library. See
+    module docstring above."""
+
+    recovery_root = asset_dir / "recovery_library"
+    fixtures = []
+
+    # CDT-SMART-001: exact filename, deeply nested in the recovery root.
+    filename = "cdt_smart_001_wood_floor.png"
+    box, mtl, bitmap, attached, missing_path, node_name, mtl_name = _build_missing_reference(rt, asset_dir, "CDT-SMART-001", filename)
+    exact_path = recovery_root / "a" / "b" / "c" / filename
+    write_stub_png(exact_path, 256, 256)
+    ok = bool(box and mtl and attached)
+    fixtures.append(
+        FixtureRecord(
+            fixture_id="CDT-SMART-001",
+            category="smart_relink",
+            description="Exact filename exists several subfolders deep inside the recovery library.",
+            expected_rule_id="TXT-001",
+            expected_detection="Recursive search finds an EXACT-band candidate at the nested path.",
+            expected_fixability="manual",
+            expected_repair_behavior="Search Library -> exact match -> user-reviewed relink.",
+            created_object_names=(node_name,) if box else (),
+            created_material_names=(mtl_name,) if mtl else (),
+            created_asset_paths=(missing_path, str(exact_path)),
+            recovery_root=str(recovery_root),
+            skipped=not ok,
+            skip_reason=None if ok else "material/bitmap construction or attachment unavailable on this host",
+        )
+    )
+
+    # CDT-SMART-002: renamed file, but dimensions strongly match the
+    # (torture-fixture-only) known original metadata.
+    filename = "cdt_smart_002_original_name.png"
+    box, mtl, bitmap, attached, missing_path, node_name, mtl_name = _build_missing_reference(rt, asset_dir, "CDT-SMART-002", filename)
+    renamed_path = recovery_root / "renamed" / "cdt_smart_002_renamed_asset.png"
+    write_stub_png(renamed_path, 512, 512)
+    ok = bool(box and mtl and attached)
+    fixtures.append(
+        FixtureRecord(
+            fixture_id="CDT-SMART-002",
+            category="smart_relink",
+            description="Original filename was changed, but resolution matches the (fixture-known) original metadata strongly.",
+            expected_rule_id="TXT-001",
+            expected_detection="No exact-filename candidate; the renamed file scores HIGH/MEDIUM via dimension + aspect-ratio evidence.",
+            expected_fixability="manual",
+            expected_repair_behavior="Search Library -> renamed match -> user-reviewed relink (never auto-applied).",
+            created_object_names=(node_name,) if box else (),
+            created_material_names=(mtl_name,) if mtl else (),
+            created_asset_paths=(missing_path, str(renamed_path)),
+            known_width=512,
+            known_height=512,
+            recovery_root=str(recovery_root),
+            skipped=not ok,
+            skip_reason=None if ok else "material/bitmap construction or attachment unavailable on this host",
+        )
+    )
+
+    # CDT-SMART-003: multiple plausible (ambiguous) candidates.
+    filename = "cdt_smart_003_marble.png"
+    box, mtl, bitmap, attached, missing_path, node_name, mtl_name = _build_missing_reference(rt, asset_dir, "CDT-SMART-003", filename)
+    candidate_a = recovery_root / "marble_v1" / "cdt_smart_003_marble_v1.png"
+    candidate_b = recovery_root / "marble_v2" / "cdt_smart_003_marble_v2.png"
+    write_stub_png(candidate_a, 256, 256)
+    write_stub_png(candidate_b, 256, 256)
+    ok = bool(box and mtl and attached)
+    fixtures.append(
+        FixtureRecord(
+            fixture_id="CDT-SMART-003",
+            category="smart_relink",
+            description="Two similarly-named candidates in different folders — neither an exact filename match.",
+            expected_rule_id="TXT-001",
+            expected_detection="Search returns multiple plausible candidates; none is auto-selected.",
+            expected_fixability="manual",
+            expected_repair_behavior="Search Library -> ambiguous -> explicit user choice required.",
+            created_object_names=(node_name,) if box else (),
+            created_material_names=(mtl_name,) if mtl else (),
+            created_asset_paths=(missing_path, str(candidate_a), str(candidate_b)),
+            recovery_root=str(recovery_root),
+            skipped=not ok,
+            skip_reason=None if ok else "material/bitmap construction or attachment unavailable on this host",
+        )
+    )
+
+    # CDT-SMART-004: no candidate anywhere in the recovery library.
+    # Deliberately NOT prefixed "cdt_smart_004_..." like its siblings -
+    # every other fixture's recovery file shares that boilerplate prefix,
+    # which would otherwise make candidates_for_asset()'s cheap stem-
+    # similarity pre-filter (see smart_relink/models.py) pick them up as
+    # false "similar name" candidates purely from the shared naming
+    # convention, not from anything a real asset library would produce.
+    filename = "zzz_no_match_anywhere_in_library.png"
+    box, mtl, bitmap, attached, missing_path, node_name, mtl_name = _build_missing_reference(rt, asset_dir, "CDT-SMART-004", filename)
+    ok = bool(box and mtl and attached)
+    fixtures.append(
+        FixtureRecord(
+            fixture_id="CDT-SMART-004",
+            category="smart_relink",
+            description="No matching or similarly-named file exists anywhere in the recovery library.",
+            expected_rule_id="TXT-001",
+            expected_detection="Search returns zero candidates; the asset stays unresolved.",
+            expected_fixability="manual",
+            expected_repair_behavior="Remains unresolved — nothing to relink.",
+            created_object_names=(node_name,) if box else (),
+            created_material_names=(mtl_name,) if mtl else (),
+            created_asset_paths=(missing_path,),
+            recovery_root=str(recovery_root),
+            skipped=not ok,
+            skip_reason=None if ok else "material/bitmap construction or attachment unavailable on this host",
+        )
+    )
+
+    # CDT-SMART-005: exact match under a Unicode (Turkish) candidate path.
+    filename = "cdt_smart_005_doku.png"
+    box, mtl, bitmap, attached, missing_path, node_name, mtl_name = _build_missing_reference(rt, asset_dir, "CDT-SMART-005", filename)
+    unicode_path = recovery_root / "çalışma" / "İstanbul" / filename
+    write_stub_png(unicode_path, 128, 128)
+    ok = bool(box and mtl and attached)
+    fixtures.append(
+        FixtureRecord(
+            fixture_id="CDT-SMART-005",
+            category="smart_relink",
+            description="Exact filename match under a non-ASCII (Turkish) candidate folder path.",
+            expected_rule_id="TXT-001",
+            expected_detection="Recursive search correctly discovers and scores the Unicode-path candidate as EXACT.",
+            expected_fixability="manual",
+            expected_repair_behavior="Search Library -> exact match -> user-reviewed relink.",
+            created_object_names=(node_name,) if box else (),
+            created_material_names=(mtl_name,) if mtl else (),
+            created_asset_paths=(missing_path, str(unicode_path)),
+            recovery_root=str(recovery_root),
+            skipped=not ok,
+            skip_reason=None if ok else "material/bitmap construction or attachment unavailable on this host",
+        )
+    )
+
+    return fixtures
+
+
 # -- entry point ---------------------------------------------------------------
 
 
@@ -469,12 +638,18 @@ def create_torture_scene(*, confirm_destructive: bool = False, asset_dir: Path |
         _build_nested_material_graph(rt, resolved_asset_dir),
         _build_multiple_object_usage(rt, resolved_asset_dir),
     ]
+    fixtures.extend(create_smart_relink_fixtures(rt, resolved_asset_dir))
 
     skipped = [f for f in fixtures if f.skipped]
     for f in skipped:
         _logger.warning("Torture scene: skipped %s (%s)", f.fixture_id, f.skip_reason)
 
-    manifest = TortureManifest(created_at=_now_iso(), asset_directory=str(resolved_asset_dir), fixtures=tuple(fixtures))
+    manifest = TortureManifest(
+        created_at=_now_iso(),
+        asset_directory=str(resolved_asset_dir),
+        fixtures=tuple(fixtures),
+        smart_relink_recovery_root=str(resolved_asset_dir / "recovery_library"),
+    )
     path = save_torture_manifest(manifest)
     _logger.info(
         "Torture scene created: %d fixture(s), %d skipped. Manifest written to %s",

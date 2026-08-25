@@ -168,6 +168,21 @@ class _FakeMaxAdapter:
         return self.found
 
 
+def test_batch_relink_repairs_multiple_missing_assets_in_one_plan(tmp_path, monkeypatch):
+    monkeypatch.setattr("corona_doctor.repair.manifest.default_repairs_dir", lambda: tmp_path / "repairs")
+    adapter = _FakeAdapter()
+    controller = RepairController(adapter=adapter)
+
+    shared_refs = [_ref(f"ref-shared-{i}", "shared.jpg", "C:/proj/shared.jpg", exists=False, map_handle=i) for i in (1, 2)]
+    single_ref = [_ref("ref-single", "single.jpg", "C:/proj/single.jpg", exists=False, map_handle=3)]
+
+    plan = controller.plan_batch_relink([(shared_refs, "D:/Lib/shared.jpg"), (single_ref, "D:/Lib/single.jpg")])
+    result = controller.apply_batch_relink(plan)
+
+    assert result.manifest.state.value == "applied"
+    assert adapter.values == {1: "D:/Lib/shared.jpg", 2: "D:/Lib/shared.jpg", 3: "D:/Lib/single.jpg"}
+
+
 def test_select_objects_delegates_to_max_adapter():
     max_adapter = _FakeMaxAdapter(found=2)
     controller = RepairController(adapter=_FakeAdapter(), max_adapter=max_adapter)

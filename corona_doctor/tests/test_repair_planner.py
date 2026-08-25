@@ -14,6 +14,7 @@ from __future__ import annotations
 from corona_doctor.core.texture_models import ExternalTextureReference, PathInfo, PathType
 from corona_doctor.repair.models import OperationKind, ValidationState
 from corona_doctor.repair.planner import (
+    build_batch_relink_plan,
     build_make_portable_plan,
     build_relink_plan,
     classify_candidates,
@@ -248,3 +249,40 @@ def test_relink_plan_preserves_unsupported_map_property_for_the_adapter_to_rejec
     object.__setattr__(ref, "source_property", None)  # simulates an unsupported map (no resolvable property)
     plan = build_relink_plan(ref, r"D:\Found\weird.jpg")
     assert plan.operations[0].source_property is None
+
+
+# -- batch relink (Smart Asset Recovery) --------------------------------------
+
+
+def test_batch_relink_plan_repairs_every_ref_sharing_one_missing_file():
+    """One missing file referenced by 3 map nodes -> one accepted
+    candidate repairs all 3 through one plan (Part 19)."""
+
+    refs = [_ref(f"ref-{i}", "shared.jpg", r"C:\proj\shared.jpg", exists=False) for i in range(3)]
+    plan = build_batch_relink_plan([(refs, r"D:\Library\shared.jpg")])
+
+    assert len(plan.operations) == 3
+    assert all(op.kind == OperationKind.RELINK_TEXTURE for op in plan.operations)
+    assert all(op.new_value == r"D:\Library\shared.jpg" for op in plan.operations)
+    assert {op.map_ref_id for op in plan.operations} == {"ref-0", "ref-1", "ref-2"}
+
+
+def test_batch_relink_plan_combines_multiple_missing_assets_in_one_plan():
+    a = [_ref("ref-a", "a.jpg", r"C:\proj\a.jpg", exists=False)]
+    b = [_ref("ref-b", "b.jpg", r"C:\proj\b.jpg", exists=False)]
+    plan = build_batch_relink_plan([(a, r"D:\Lib\a.jpg"), (b, r"D:\Lib\b.jpg")])
+
+    assert len(plan.operations) == 2
+    assert plan.operations[0].new_value == r"D:\Lib\a.jpg"
+    assert plan.operations[1].new_value == r"D:\Lib\b.jpg"
+
+
+def test_batch_relink_plan_never_includes_a_copy_operation():
+    refs = [_ref("ref-1", "a.jpg", r"C:\proj\a.jpg", exists=False)]
+    plan = build_batch_relink_plan([(refs, r"D:\Lib\a.jpg")])
+    assert not any(op.kind == OperationKind.COPY_FILE for op in plan.operations)
+
+
+def test_batch_relink_plan_with_no_accepted_pairs_is_empty():
+    plan = build_batch_relink_plan([])
+    assert plan.operations == ()

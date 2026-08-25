@@ -24,7 +24,9 @@ and VERIFY (`repair/verification.py`).
 ```
 repair/
     models.py        - RepairOperation/RepairPlan/RepairManifest/RepairState (pure dataclasses)
-    planner.py        - build_make_portable_plan / find_relink_candidates / build_relink_plan (pure, no I/O)
+    planner.py        - build_make_portable_plan / find_relink_candidates / build_relink_plan /
+                         build_batch_relink_plan (pure, no I/O — the last one is Smart Asset
+                         Recovery's batch-accept path, see docs/SMART_RELINK.md)
     transaction.py    - apply_plan (the only place that mutates - via injected callables)
     verification.py   - verify_repair (re-reads scene/filesystem after apply)
     revert.py         - build_revert_plan (reads current state, detects conflicts)

@@ -17,6 +17,11 @@ from typing import Any
 
 from corona_doctor.core.texture_models import TextureDoctorResult
 from corona_doctor.devtools.torture_manifest import FixtureRecord, TortureManifest, load_torture_manifest
+from corona_doctor.smart_relink.index import build_search_index
+from corona_doctor.smart_relink.metadata import read_candidate_metadata
+from corona_doctor.smart_relink.models import ConfidenceBand, KnownAssetMetadata
+from corona_doctor.smart_relink.scoring import rank_candidates
+from corona_doctor.smart_relink.session import missing_assets_from_references
 
 
 @dataclass(frozen=True)
@@ -137,7 +142,115 @@ def validate_torture_scene(*, manifest: TortureManifest | None = None, scanner: 
         "checks": [c.__dict__ for c in checks],
     }
     print(format_validation_report(checks, scanner_errors=len(result.errors)))
+
+    # Smart Relink is a separate quality dimension (search/scoring, not
+    # detection) - see docs/SMART_RELINK.md, "Torture scene extension".
+    # Printed as its own clearly separated section, never folded into the
+    # detection score above.
+    if manifest.smart_relink_recovery_root:
+        print()
+        smart_report = validate_smart_relink(manifest=manifest, result=result)
+        report["smart_relink"] = smart_report
+
     return report
+
+
+def _check_smart_relink_fixture(fixture: FixtureRecord, result: TextureDoctorResult, recovery_root: str) -> FixtureCheck:
+    if fixture.skipped:
+        return FixtureCheck(fixture.fixture_id, fixture.description, "skip", fixture.skip_reason or "fixture was skipped at generation time")
+
+    missing_path = fixture.created_asset_paths[0] if fixture.created_asset_paths else None
+    ref = next((r for r in result.texture_references if r.path_info.raw_path == missing_path and r.path_info.exists is False), None)
+    if ref is None:
+        return FixtureCheck(fixture.fixture_id, fixture.description, "fail", "missing texture reference not found in scan result")
+
+    known_metadata_lookup = {}
+    if fixture.known_width and fixture.known_height:
+        known_metadata_lookup[missing_path] = KnownAssetMetadata(width=fixture.known_width, height=fixture.known_height, source="torture fixture manifest")
+    [asset] = missing_assets_from_references([ref], known_metadata_lookup=known_metadata_lookup)
+
+    index = build_search_index([recovery_root], walk_fn=lambda root: os.walk(root))
+    candidate_paths = [f.path for f in index.candidates_for_asset(asset.filename)]
+    candidates = rank_candidates(asset, candidate_paths, lambda p: read_candidate_metadata(p))
+
+    if fixture.fixture_id in ("CDT-SMART-001", "CDT-SMART-005"):
+        if not candidates or candidates[0].band != ConfidenceBand.EXACT:
+            return FixtureCheck(fixture.fixture_id, fixture.description, "fail", f"expected an EXACT candidate, got {candidates[0].band.value if candidates else 'none'}")
+        return FixtureCheck(fixture.fixture_id, fixture.description, "pass")
+
+    if fixture.fixture_id == "CDT-SMART-002":
+        if not candidates or candidates[0].band not in (ConfidenceBand.HIGH, ConfidenceBand.MEDIUM):
+            return FixtureCheck(fixture.fixture_id, fixture.description, "fail", f"expected HIGH/MEDIUM, got {candidates[0].band.value if candidates else 'none'}")
+        return FixtureCheck(fixture.fixture_id, fixture.description, "pass")
+
+    if fixture.fixture_id == "CDT-SMART-003":
+        if len(candidates) < 2 or candidates[0].percent != candidates[1].percent:
+            return FixtureCheck(fixture.fixture_id, fixture.description, "fail", "expected 2+ candidates tied at the top score")
+        return FixtureCheck(fixture.fixture_id, fixture.description, "pass")
+
+    if fixture.fixture_id == "CDT-SMART-004":
+        if candidates:
+            return FixtureCheck(fixture.fixture_id, fixture.description, "fail", f"expected zero candidates, got {len(candidates)}")
+        return FixtureCheck(fixture.fixture_id, fixture.description, "pass")
+
+    return FixtureCheck(fixture.fixture_id, fixture.description, "skip", "no validator rule for this fixture id")
+
+
+_SMART_RELINK_LABELS = {
+    "CDT-SMART-001": "Exact recovery",
+    "CDT-SMART-002": "Renamed recovery",
+    "CDT-SMART-003": "Ambiguous recovery",
+    "CDT-SMART-004": "No-match handling",
+    "CDT-SMART-005": "Unicode recovery",
+}
+
+
+def validate_smart_relink(*, manifest: TortureManifest | None = None, result: TextureDoctorResult | None = None, scanner: Any | None = None) -> dict:
+    """Tests Smart Asset Recovery's SEARCH QUALITY (does it find/rank
+    the right candidates) — a distinct question from Texture Doctor's
+    DETECTION quality (``validate_torture_scene`` above). Uses the real
+    ``smart_relink`` engine against the torture scene's recovery
+    library — never fakes a candidate result."""
+
+    manifest = manifest or load_torture_manifest()
+    if manifest is None or not manifest.smart_relink_recovery_root:
+        print("Smart Relink validation: no torture scene manifest / recovery root found — run create_torture_scene() first.")
+        return {"error": "no recovery root available"}
+
+    if result is None:
+        if scanner is None:
+            from corona_doctor.core.diagnostics import DiagnosticEngine
+            from corona_doctor.core.events import EventBus
+            from corona_doctor.scanners.texture_doctor_scanner import TextureDoctorScanner
+
+            scanner = TextureDoctorScanner()
+            DiagnosticEngine(EventBus()).run(scanner)
+        result = scanner.result
+    if result is None:
+        print("Smart Relink validation: scan did not complete.")
+        return {"error": "scan did not complete"}
+
+    smart_fixtures = [f for f in manifest.fixtures if f.category == "smart_relink"]
+    checks = [_check_smart_relink_fixture(f, result, manifest.smart_relink_recovery_root) for f in smart_fixtures]
+
+    print(format_smart_relink_report(checks))
+    return {
+        "expected": len(checks),
+        "passed": sum(1 for c in checks if c.status == "pass"),
+        "failed": sum(1 for c in checks if c.status == "fail"),
+        "skipped": sum(1 for c in checks if c.status == "skip"),
+        "checks": [c.__dict__ for c in checks],
+    }
+
+
+def format_smart_relink_report(checks: list[FixtureCheck]) -> str:
+    lines = ["SMART RELINK VALIDATION", ""]
+    for check in checks:
+        tag = {"pass": "PASS", "fail": "FAIL", "skip": "SKIP"}[check.status]
+        label = _SMART_RELINK_LABELS.get(check.fixture_id, check.fixture_id)
+        detail = f" — {check.detail}" if check.detail and check.status != "pass" else ""
+        lines.append(f"{label:<22}{tag}{detail}")
+    return "\n".join(lines)
 
 
 def format_validation_report(checks: list[FixtureCheck], *, scanner_errors: int) -> str:

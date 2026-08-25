@@ -42,9 +42,11 @@ from corona_doctor.ui.models.texture_model import (
     TextureTableModel,
     texture_status,
 )
+from corona_doctor.smart_relink.session import missing_assets_from_references
 from corona_doctor.ui.qt_safe import ignore_signal_args
 from corona_doctor.ui.repair_controller import RepairController
 from corona_doctor.ui.responsive.breakpoint_manager import LayoutState
+from corona_doctor.ui.smart_relink_dialog import SmartRelinkDialog
 
 _FILTER_LABELS = {
     TextureFilter.ALL: "All",
@@ -163,6 +165,11 @@ class TexturesView(QWidget):
         self._portable_button.setObjectName("Secondary")
         self._portable_button.clicked.connect(ignore_signal_args(self._on_make_portable_clicked))
         root.addWidget(self._portable_button)
+
+        self._recover_button = QPushButton("Find All Missing Assets…", self)
+        self._recover_button.setObjectName("Secondary")
+        self._recover_button.clicked.connect(ignore_signal_args(self._on_find_all_missing_clicked))
+        root.addWidget(self._recover_button)
 
         self._model = TextureTableModel(parent=self)
         self._proxy = TextureFilterProxyModel(self)
@@ -334,6 +341,24 @@ class TexturesView(QWidget):
         result = self._repair.apply_make_portable(plan)
         state, problems = self._repair.verify(result.manifest)
         self._report_repair_result(result, state, problems)
+
+    def _on_find_all_missing_clicked(self) -> None:
+        """"Find All Missing Assets" — Smart Asset Recovery (see
+        docs/SMART_RELINK.md). One folder-selection session covers every
+        missing texture at once, unlike per-row Find & Relink."""
+
+        missing_refs = [r for r in self._references if r.path_info.exists is False]
+        if not missing_refs:
+            QMessageBox.information(self, "Find All Missing Assets", "No missing textures in the current scan.")
+            return
+
+        missing_assets = missing_assets_from_references(missing_refs)
+        refs_by_ref_id = {r.ref_id: r for r in missing_refs}
+        refs_by_asset_id = {asset.asset_id: tuple(refs_by_ref_id[rid] for rid in asset.map_ref_ids) for asset in missing_assets}
+
+        dialog = SmartRelinkDialog(missing_assets, refs_by_asset_id, repair_controller=self._repair, parent=self)
+        dialog.repair_completed.connect(ignore_signal_args(self.repair_completed.emit))
+        dialog.exec()
 
     def _report_repair_result(self, result: RepairResult, state: RepairState, problems: tuple[str, ...]) -> None:
         lines = [result.summary, f"State: {state.value.upper()}"]

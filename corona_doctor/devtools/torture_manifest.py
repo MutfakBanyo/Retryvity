@@ -32,6 +32,19 @@ class FixtureRecord:
     created_asset_paths: tuple[str, ...] = field(default_factory=tuple)
     skipped: bool = False
     skip_reason: str | None = None
+    # Smart Asset Recovery fixtures only (CDT-SMART-*): the ground-truth
+    # "known original metadata" the torture validator is allowed to feed
+    # into smart_relink's scoring engine as KnownAssetMetadata — never
+    # available for a real missing texture (see
+    # smart_relink/models.py::KnownAssetMetadata's docstring), but valid
+    # here because the torture scene generator wrote the recovery-library
+    # file itself and genuinely knows its dimensions.
+    known_width: int | None = None
+    known_height: int | None = None
+    # Where create_smart_relink_fixtures() wrote this fixture's recovery
+    # library content (a subtree of the session's shared recovery root) —
+    # None for ordinary (non-recovery) fixtures.
+    recovery_root: str | None = None
 
     def to_dict(self) -> dict:
         return dict(self.__dict__)
@@ -50,12 +63,14 @@ class TortureManifest:
     created_at: str
     asset_directory: str
     fixtures: tuple[FixtureRecord, ...] = ()
+    smart_relink_recovery_root: str | None = None
 
     def to_dict(self) -> dict:
         return {
             "created_at": self.created_at,
             "asset_directory": self.asset_directory,
             "fixtures": [f.to_dict() for f in self.fixtures],
+            "smart_relink_recovery_root": self.smart_relink_recovery_root,
         }
 
     @staticmethod
@@ -64,6 +79,7 @@ class TortureManifest:
             created_at=d["created_at"],
             asset_directory=d["asset_directory"],
             fixtures=tuple(FixtureRecord.from_dict(f) for f in d.get("fixtures", [])),
+            smart_relink_recovery_root=d.get("smart_relink_recovery_root"),
         )
 
 
