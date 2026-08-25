@@ -94,6 +94,11 @@ class MainPanel(QWidget):
         root.addWidget(self._stack, stretch=1)
 
         self._overview.scan_requested.connect(self._start_scene_scan)
+        # Part I, "Verify after fix": a repair reports its own outcome
+        # immediately, but the Texture Doctor state it affected (e.g.
+        # TXT-006's local-path count) is only trustworthy after an
+        # actual rescan — see docs/REPAIR_ENGINE.md.
+        self._textures.repair_completed.connect(ignore_signal_args(self._start_scene_scan))
 
         self._unsubscribe = services.bus.subscribe(self._on_event)
 

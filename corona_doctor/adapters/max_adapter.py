@@ -149,6 +149,28 @@ class MaxAdapter:
         except Exception:  # noqa: BLE001
             return None
 
+    def select_nodes_by_name(self, names: tuple[str, ...]) -> int:
+        """Select scene nodes by name — the "Show Objects" repair-locate
+        action (see docs/REPAIR_ENGINE.md, "Locate/traceability"). Never
+        called except in direct response to an explicit user click (see
+        ui/views/textures_view.py) — selection is a visible, intentional
+        state change, never a side effect of opening/hovering a finding.
+        Returns the number of nodes actually found and selected; never
+        raises.
+        """
+
+        if pymxs is None:
+            return 0
+        try:
+            rt = pymxs.runtime
+            nodes = [n for n in (rt.getNodeByName(name) for name in names) if n is not None]
+            if not nodes:
+                return 0
+            rt.select(nodes)
+            return len(nodes)
+        except Exception:  # noqa: BLE001 - a selection action must never crash the host
+            return 0
+
     def get_scene_object_count(self) -> int | None:
         """Cheap scene stat used only for environment context, not a scan."""
 

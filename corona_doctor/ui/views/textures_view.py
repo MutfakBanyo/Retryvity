@@ -4,23 +4,35 @@ Uses Qt Model/View (QTableView + TextureTableModel + a QSortFilterProxyModel
 for search/filter) — never one QWidget per texture, per the UI performance
 rules. Operates entirely on cached scan results: search/filter/sort never
 re-touch the 3ds Max scene (see docs/TEXTURE_DOCTOR.md).
+
+Repair actions (Make Project Portable / Find & Relink / Show Objects) go
+through ``ui/repair_controller.py`` — this view builds dialogs/previews
+only; it never touches ``repair/`` or an adapter directly. Every mutating
+action requires an explicit confirm click (QMessageBox) after a preview
+that states "No changes have been made yet." — see
+docs/REPAIR_ENGINE.md, "No mutation during proposal/preview".
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
+    QFileDialog,
     QFormLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
+    QMessageBox,
+    QPushButton,
     QTableView,
     QVBoxLayout,
     QWidget,
 )
 
 from corona_doctor.core.texture_models import ExternalTextureReference
+from corona_doctor.repair.models import OperationKind, RepairResult, RepairState, ValidationState
 from corona_doctor.ui.components.section_header import SectionHeader
 from corona_doctor.ui.design.metrics import Spacing
 from corona_doctor.ui.models.texture_model import (
@@ -30,6 +42,8 @@ from corona_doctor.ui.models.texture_model import (
     TextureTableModel,
     texture_status,
 )
+from corona_doctor.ui.qt_safe import ignore_signal_args
+from corona_doctor.ui.repair_controller import RepairController
 from corona_doctor.ui.responsive.breakpoint_manager import LayoutState
 
 _FILTER_LABELS = {
@@ -50,9 +64,13 @@ _HIDDEN_COLUMNS_BY_STATE = {
 
 
 class _TextureDetailsPanel(QWidget):
+    relink_requested = Signal()
+    show_objects_requested = Signal()
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("Surface")
+        self._current_ref: ExternalTextureReference | None = None
         self._form = QFormLayout(self)
         self._form.setContentsMargins(Spacing.MD, Spacing.SM, Spacing.MD, Spacing.SM)
         self._form.setSpacing(Spacing.XS)
@@ -69,11 +87,30 @@ class _TextureDetailsPanel(QWidget):
             self._form.addRow(field, value)
             self._rows[field] = value
 
+        self._relink_button = QPushButton("Find & Relink", self)
+        self._relink_button.setObjectName("Secondary")
+        self._relink_button.clicked.connect(ignore_signal_args(self.relink_requested.emit))
+        self._relink_button.hide()
+        self._form.addRow(self._relink_button)
+
+        self._show_objects_button = QPushButton("Show Objects", self)
+        self._show_objects_button.setObjectName("Secondary")
+        self._show_objects_button.clicked.connect(ignore_signal_args(self.show_objects_requested.emit))
+        self._show_objects_button.hide()
+        self._form.addRow(self._show_objects_button)
+
+    @property
+    def current_reference(self) -> ExternalTextureReference | None:
+        return self._current_ref
+
     def show_reference(self, ref: ExternalTextureReference | None) -> None:
+        self._current_ref = ref
         if ref is None:
             self._name_label.setText("Select a texture to see details.")
             for label in self._rows.values():
                 label.setText("—")
+            self._relink_button.hide()
+            self._show_objects_button.hide()
             return
 
         self._name_label.setText(ref.filename)
@@ -85,10 +122,21 @@ class _TextureDetailsPanel(QWidget):
         self._rows["Materials"].setText(ref.material_name or "unknown")
         self._rows["Status"].setText(texture_status(ref))
 
+        self._relink_button.setVisible(ref.path_info.exists is False)
+        self._show_objects_button.setVisible(bool(ref.object_names))
+
 
 class TexturesView(QWidget):
-    def __init__(self, parent: QWidget | None = None) -> None:
+    # Emitted after a repair actually applied something, so the panel
+    # owner can rescan (see docs/REPAIR_ENGINE.md, "Verify after fix" —
+    # a repair result is reported, then the caller is expected to rerun
+    # Texture Doctor to confirm the relevant findings actually cleared).
+    repair_completed = Signal()
+
+    def __init__(self, parent: QWidget | None = None, repair_controller: RepairController | None = None) -> None:
         super().__init__(parent)
+        self._repair = repair_controller or RepairController()
+        self._references: tuple[ExternalTextureReference, ...] = ()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(Spacing.LG, Spacing.LG, Spacing.LG, Spacing.LG)
@@ -110,6 +158,11 @@ class TexturesView(QWidget):
             self._filter_combo.addItem(_FILTER_LABELS[filter_value], filter_value)
         self._filter_combo.currentIndexChanged.connect(self._on_filter_changed)
         root.addWidget(self._filter_combo)
+
+        self._portable_button = QPushButton("Make Project Portable…", self)
+        self._portable_button.setObjectName("Secondary")
+        self._portable_button.clicked.connect(ignore_signal_args(self._on_make_portable_clicked))
+        root.addWidget(self._portable_button)
 
         self._model = TextureTableModel(parent=self)
         self._proxy = TextureFilterProxyModel(self)
@@ -133,6 +186,8 @@ class TexturesView(QWidget):
         root.addWidget(self._empty_label)
 
         self._details = _TextureDetailsPanel(self)
+        self._details.relink_requested.connect(self._on_relink_requested)
+        self._details.show_objects_requested.connect(self._on_show_objects_requested)
         root.addWidget(self._details)
 
         self._apply_layout_state(LayoutState.STANDARD)
@@ -140,6 +195,7 @@ class TexturesView(QWidget):
     # -- public API -------------------------------------------------------
 
     def set_references(self, references: tuple[ExternalTextureReference, ...]) -> None:
+        self._references = tuple(references)
         self._model.set_references(references)
         self._details.show_reference(None)
 
@@ -177,3 +233,117 @@ class TexturesView(QWidget):
             return
         ref = indexes[0].data(TextureRefRole)
         self._details.show_reference(ref)
+
+    # -- repair actions -------------------------------------------------------
+
+    def _on_show_objects_requested(self) -> None:
+        ref = self._details.current_reference
+        if ref is None or not ref.object_names:
+            return
+        count = self._repair.select_objects(ref.object_names)
+        if count == 0:
+            QMessageBox.information(
+                self,
+                "Show Objects",
+                "No matching objects could be found/selected in the current scene.",
+            )
+
+    def _on_relink_requested(self) -> None:
+        ref = self._details.current_reference
+        if ref is None:
+            return
+
+        search_root = QFileDialog.getExistingDirectory(self, "Select a folder to search for a replacement texture")
+        if not search_root:
+            return
+
+        candidates, classification = self._repair.find_candidates(ref.filename, [search_root])
+        if classification == "none":
+            QMessageBox.information(
+                self,
+                "Find & Relink",
+                f"No candidate files named {ref.filename!r} were found under that folder. Still unresolved.",
+            )
+            return
+
+        if classification == "single":
+            chosen_path = candidates[0].path
+        else:
+            paths = [c.path for c in candidates]
+            chosen_path, accepted = QInputDialog.getItem(
+                self,
+                "Find & Relink",
+                f"Multiple candidates found for {ref.filename!r} — choose one:",
+                paths,
+                editable=False,
+            )
+            if not accepted:
+                return
+
+        confirmed = QMessageBox.question(
+            self,
+            "Relink Texture",
+            f"Relink {ref.filename!r} to:\n\n{chosen_path}\n\nNo changes have been made yet.",
+            QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+
+        plan = self._repair.plan_relink(ref, chosen_path)
+        result = self._repair.apply_relink(plan)
+        state, problems = self._repair.verify(result.manifest)
+        self._report_repair_result(result, state, problems)
+
+    def _on_make_portable_clicked(self) -> None:
+        if not self._references:
+            QMessageBox.information(self, "Make Project Portable", "No scanned textures to work with — run a scan first.")
+            return
+
+        destination = QFileDialog.getExistingDirectory(self, "Select the project asset directory")
+        if not destination:
+            return
+
+        plan = self._repair.plan_make_portable(self._references, destination)
+        copy_count = sum(1 for op in plan.operations if op.kind == OperationKind.COPY_FILE)
+        relink_count = sum(
+            1 for op in plan.operations if op.kind == OperationKind.RELINK_TEXTURE and op.validation_state == ValidationState.READY
+        )
+        preview = (
+            "MAKE PROJECT PORTABLE\n\n"
+            f"{len(self._references)} texture reference(s) inspected\n"
+            f"{copy_count} unique source file(s)\n\n"
+            f"{copy_count} file(s) will be copied\n"
+            f"{relink_count} map path(s) will be updated\n\n"
+            f"Destination:\n{destination}\n\n"
+            f"Conflicts:\n{len(plan.conflicts)}\n\n"
+            f"Missing source files:\n{len(plan.missing_sources)}\n\n"
+            f"Already portable (skipped):\n{len(plan.already_portable_ref_ids)}\n\n"
+            "No changes have been made yet."
+        )
+        confirmed = QMessageBox.question(
+            self,
+            "Make Project Portable",
+            preview,
+            QMessageBox.StandardButton.Cancel | QMessageBox.StandardButton.Yes,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+
+        result = self._repair.apply_make_portable(plan)
+        state, problems = self._repair.verify(result.manifest)
+        self._report_repair_result(result, state, problems)
+
+    def _report_repair_result(self, result: RepairResult, state: RepairState, problems: tuple[str, ...]) -> None:
+        lines = [result.summary, f"State: {state.value.upper()}"]
+        if result.errors:
+            lines.append("")
+            lines.append("Errors:")
+            lines.extend(f"  - {e}" for e in result.errors)
+        if problems:
+            lines.append("")
+            lines.append("Verification issues:")
+            lines.extend(f"  - {p}" for p in problems)
+        QMessageBox.information(self, "Repair Result", "\n".join(lines))
+        self.repair_completed.emit()

@@ -227,6 +227,13 @@ def _build_texture_reference(
         if dims is not None:
             width, height = dims
 
+    # Fallback identities (see SceneAdapter._identity) are negative and
+    # only meaningful within the scan that produced them — never a real
+    # pymxs AnimHandle safe to pass to rt.getAnimByHandle later. A repair
+    # action must not be offered a handle it could resolve to the wrong
+    # object.
+    map_handle = discovery.handle if discovery.handle is not None and discovery.handle > 0 else None
+
     return ExternalTextureReference(
         ref_id=f"ref-{index:06d}",
         map_class=discovery.map_class,
@@ -241,6 +248,7 @@ def _build_texture_reference(
         width=width,
         height=height,
         source_property=discovery.source_property,
+        map_handle=map_handle,
     )
 
 

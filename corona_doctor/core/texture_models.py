@@ -96,6 +96,14 @@ class ExternalTextureReference:
     reference_count: int = 1
     unsupported: bool = False
     source_property: str | None = None
+    # The map object's Animatable handle (see adapters/scene_adapter.py's
+    # module docstring) — the stable identity a repair action needs to
+    # find this exact live scene object again to relink it. None if the
+    # scan fell back to a per-scan identity (see
+    # SceneAdapter._identity) — a repair targeting such a map cannot
+    # reliably re-locate it and must be treated as unsupported/blocked
+    # (see repair/planner.py).
+    map_handle: int | None = None
 
 
 @dataclass(frozen=True)
