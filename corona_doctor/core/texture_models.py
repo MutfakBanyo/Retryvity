@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from corona_doctor.core.models import Finding
+
 
 class PathType(str, Enum):
     """Structural classification of a raw path string.
@@ -179,3 +181,56 @@ class TextureScanFacts:
     errors: tuple[str, ...] = ()
     diagnostics: TextureDoctorDiagnostics = field(default_factory=TextureDoctorDiagnostics)
     compatibility_warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ScanTimings:
+    """Per-stage scan timing, in milliseconds — see performance/profiler.py.
+
+    Mirrors ``Profiler.report()``'s ``texture_doctor.*`` keys as named
+    fields so consumers don't need to know the profiler's label strings.
+    ``report_format_ms`` is filled in only by callers that time their own
+    call to ``reports/texture_report.py::format_texture_doctor_report`` —
+    formatting a result never re-runs the scan, so it has no bearing on
+    the other fields.
+    """
+
+    nodes_ms: float = 0.0
+    materials_maps_ms: float = 0.0
+    filesystem_ms: float = 0.0
+    rules_ms: float = 0.0
+    total_ms: float = 0.0
+    report_format_ms: float = 0.0
+
+
+@dataclass(frozen=True)
+class TextureDoctorResult:
+    """The stable, production-facing Texture Doctor result.
+
+    This is what a caller outside the scanner (a future UI table, an
+    export, ``reports/texture_report.py``) should hold onto — never the
+    dev-only ``TextureScanFacts.diagnostics`` (AnimHandle samples,
+    rejected-map property dumps, etc.), which stays a development-only
+    concern surfaced only by ``devtools/texture_probe.py``. See
+    docs/TEXTURE_DOCTOR.md, "Production result model".
+    """
+
+    inventory: SceneInventory
+    texture_references: tuple[ExternalTextureReference, ...]
+    findings: tuple[Finding, ...]
+    compatibility_warnings: tuple[str, ...]
+    unknown_map_classes: tuple[str, ...]
+    errors: tuple[str, ...]
+    timings: ScanTimings = field(default_factory=ScanTimings)
+
+    @staticmethod
+    def from_facts(facts: TextureScanFacts, findings: tuple[Finding, ...], timings: ScanTimings) -> "TextureDoctorResult":
+        return TextureDoctorResult(
+            inventory=facts.inventory,
+            texture_references=facts.texture_references,
+            findings=findings,
+            compatibility_warnings=facts.compatibility_warnings,
+            unknown_map_classes=facts.unknown_map_classes,
+            errors=facts.errors,
+            timings=timings,
+        )

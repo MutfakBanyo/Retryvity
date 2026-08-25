@@ -18,7 +18,8 @@ from typing import Any
 
 from corona_doctor.core.models import Finding, Impact, Repairability, Severity
 from corona_doctor.core.rules import CallableRule, Rule, RuleDefinition
-from corona_doctor.core.texture_models import ExternalTextureReference, PathType, TextureScanFacts, TextureThresholds
+from corona_doctor.core.texture_models import ExternalTextureReference, TextureScanFacts, TextureThresholds
+from corona_doctor.core.texture_query import filter_local_workstation_paths
 
 _SAMPLE_LIMIT = 10
 
@@ -30,6 +31,17 @@ def _facts(context: dict[str, Any]) -> TextureScanFacts | None:
 
 def _sample(items: list[str]) -> tuple[str, ...]:
     return tuple(items[:_SAMPLE_LIMIT])
+
+
+def _oversized_sample_line(ref: ExternalTextureReference, thresholds: TextureThresholds) -> str:
+    tier = ">= 16K threshold" if max(ref.width, ref.height) >= thresholds.oversized_strong_warning_px else ">= 8K threshold"
+    usage_bits = []
+    if ref.material_name:
+        usage_bits.append(f"material {ref.material_name}")
+    if ref.object_names:
+        usage_bits.append(f"object(s) {', '.join(ref.object_names[:3])}")
+    usage = f" — used by {', '.join(usage_bits)}" if usage_bits else ""
+    return f"{ref.filename} — {ref.width}x{ref.height}, {ref.file_size_human} ({tier}){usage}"
 
 
 def _make_missing_texture_rule() -> CallableRule:
@@ -77,6 +89,21 @@ def _make_missing_texture_rule() -> CallableRule:
 
 
 def _make_duplicate_reference_rule() -> CallableRule:
+    """TXT-002 semantics (audited against a real-host scan: 262 unique
+    materials, 640 map nodes, 46 groups here): this measures REUSE — N
+    distinct map nodes resolving to the same underlying file path — not
+    "duplication" in the sense of a mistake. Multiple map nodes pointing
+    at one shared bitmap is completely normal (an instanced/shared
+    texture across several materials). This rule does not and cannot
+    distinguish that from "probably-redundant map nodes that should be
+    consolidated" — both look identical from path data alone — and it
+    makes no claim about whether two *different* files share content
+    (that would need a hash, which this milestone does not compute; see
+    TXT-003 for the filename+size heuristic, explicitly capped at 0.6
+    confidence for exactly that reason). Kept at OPTIMIZATION severity
+    and worded as a neutral observation, never as an error.
+    """
+
     def evaluate(context: dict[str, Any]) -> Finding | None:
         facts = _facts(context)
         if facts is None:
@@ -86,35 +113,38 @@ def _make_duplicate_reference_rule() -> CallableRule:
         for ref in facts.texture_references:
             if ref.path_info.comparison_key:
                 groups[ref.path_info.comparison_key].append(ref)
-        duplicate_groups = {key: refs for key, refs in groups.items() if len(refs) > 1}
-        if not duplicate_groups:
+        reuse_groups = {key: refs for key, refs in groups.items() if len(refs) > 1}
+        if not reuse_groups:
             return None
 
         sample_lines = []
-        for refs in list(duplicate_groups.values())[:_SAMPLE_LIMIT]:
+        for refs in list(reuse_groups.values())[:_SAMPLE_LIMIT]:
             materials = sorted({r.material_name for r in refs if r.material_name})
             sample_lines.append(f"{refs[0].filename} — {len(refs)} map node(s), materials: {', '.join(materials) or 'unknown'}")
 
         details = (
-            f"{len(duplicate_groups)} texture file(s) are referenced by more than one map node.\n\n"
-            "This is not automatically a problem — shared textures are normal — but reviewing these "
-            "groups may reveal redundant map nodes that could be consolidated.\n\n" + "\n".join(sample_lines)
+            f"{len(reuse_groups)} texture file(s) are pointed at by more than one map node — this is "
+            "reuse, not necessarily a problem: the same shared/instanced bitmap referenced from several "
+            "materials is a normal, often deliberate pattern. This rule cannot tell that apart from "
+            "genuinely redundant map nodes that could be consolidated into one — both look identical from "
+            "path data alone — so treat this as a list worth a quick look, not a list of defects.\n\n"
+            + "\n".join(sample_lines)
         )
 
         return Finding(
             id="TXT-002",
             rule_id="TXT-002",
             category="Textures",
-            title="Duplicate texture reference",
-            summary=f"{len(duplicate_groups)} texture file(s) are referenced by multiple map nodes.",
+            title="Texture reused by multiple map nodes",
+            summary=f"{len(reuse_groups)} texture file(s) are referenced by more than one map node.",
             severity=Severity.OPTIMIZATION,
             confidence=1.0,
             performance_impact=Impact.LOW,
             memory_impact=Impact.LOW,
             render_impact=Impact.NONE,
-            affected_items=_sample([refs[0].filename for refs in duplicate_groups.values()]),
+            affected_items=_sample([refs[0].filename for refs in reuse_groups.values()]),
             details=details,
-            recommended_action="Review whether these map nodes can share a single instanced bitmap node.",
+            recommended_action="Review whether these map nodes can share a single instanced bitmap node; skip any where reuse is already intentional.",
             repairability=Repairability.MANUAL,
         )
 
@@ -122,8 +152,8 @@ def _make_duplicate_reference_rule() -> CallableRule:
         definition=RuleDefinition(
             id="TXT-002",
             category="Textures",
-            title="Duplicate Texture Reference",
-            description="The same underlying texture file is referenced by more than one map node.",
+            title="Texture Reused By Multiple Map Nodes",
+            description="The same underlying texture file is pointed at by more than one map node — reuse, not automatically a defect.",
         ),
         fn=evaluate,
     )
@@ -211,10 +241,12 @@ def _make_oversized_texture_rule(thresholds: TextureThresholds) -> CallableRule:
             return None
 
         sample = strong + warning
-        sample_lines = [f"{r.filename} — {r.width}x{r.height}" for r in sample[:_SAMPLE_LIMIT]]
+        sample_lines = [_oversized_sample_line(r, thresholds) for r in sample[:_SAMPLE_LIMIT]]
         details = (
-            "This texture is unusually large. Large textures may increase scene memory use and loading "
-            "time. Review whether this resolution is necessary for the final camera framing.\n\n"
+            "A texture's pixel dimensions exceeded a configured threshold — this is a heuristic, not a "
+            "verdict: an 8K+ texture can be completely legitimate for a hero asset or a tight close-up "
+            "framing. Large textures may increase scene memory use and load time; review whether the "
+            "resolution is actually needed for how each one is used.\n\n"
             f">= {thresholds.oversized_strong_warning_px}px on either dimension: {len(strong)}\n"
             f"{thresholds.oversized_warning_px}-{thresholds.oversized_strong_warning_px - 1}px on either dimension: {len(warning)}\n\n"
             + "\n".join(sample_lines)
@@ -302,20 +334,17 @@ def _make_local_path_rule(thresholds: TextureThresholds) -> CallableRule:
         if facts is None:
             return None
 
-        flagged = [
-            r
-            for r in facts.texture_references
-            if r.path_info.path_type == PathType.LOCAL
-            and any(marker in r.path_info.normalized_path.lower() for marker in thresholds.local_path_markers)
-        ]
+        flagged = filter_local_workstation_paths(facts.texture_references, thresholds)
         if not flagged:
             return None
 
         sample_lines = [f"{r.filename} — {r.path_info.normalized_path}" for r in flagged[:_SAMPLE_LIMIT]]
         details = (
-            f"{len(flagged)} texture(s) appear to use a workstation-specific path (e.g. under a user "
-            "profile, Desktop, Downloads, or Temp) and may not be portable to another workstation or "
-            "render node.\n\n" + "\n".join(sample_lines)
+            f"{len(flagged)} texture(s) resolve to a workstation-specific path (under a user profile, "
+            "Desktop, Downloads, Temp, or AppData). That is not a broken scene — it will render fine on "
+            "this machine — but it is a portability risk: the file will not exist at that path on another "
+            "workstation, on a render farm node, or for a collaborator who opens this project, so the scene "
+            "will show a missing texture there even though it works here.\n\n" + "\n".join(sample_lines)
         )
 
         return Finding(
@@ -331,7 +360,7 @@ def _make_local_path_rule(thresholds: TextureThresholds) -> CallableRule:
             render_impact=Impact.NONE,
             affected_items=_sample([r.filename for r in flagged]),
             details=details,
-            recommended_action="Move these textures into a shared project/asset location before handing the scene to another workstation or a render farm.",
+            recommended_action="Move these textures into a shared project/asset location (and relink) before handing the scene to another workstation, a collaborator, or a render farm.",
             repairability=Repairability.MANUAL,
         )
 

@@ -32,8 +32,10 @@ from corona_doctor.core.models import Finding
 from corona_doctor.core.rules import RuleEngine
 from corona_doctor.core.texture_models import (
     ExternalTextureReference,
+    ScanTimings,
     SceneInventory,
     TextureDoctorDiagnostics,
+    TextureDoctorResult,
     TextureScanFacts,
     TextureThresholds,
 )
@@ -69,6 +71,11 @@ class TextureDoctorScanner(BaseScanner):
         self.inventory: SceneInventory | None = None
         self.facts: TextureScanFacts | None = None
         self.texture_references: tuple[ExternalTextureReference, ...] = ()
+        # The stable, production-facing result — see core/texture_models.py's
+        # TextureDoctorResult docstring. inventory/facts/texture_references
+        # above stay for existing callers (UI, tests); this bundles the same
+        # data (minus dev-only diagnostics) into one object for anything new.
+        self.result: TextureDoctorResult | None = None
 
     def is_available(self) -> bool:
         return self._scene.is_available()
@@ -167,6 +174,9 @@ class TextureDoctorScanner(BaseScanner):
             engine = RuleEngine(load_rules(self._thresholds))
             findings: list[Finding] = engine.run({"texture_facts": self.facts})
 
+        timings = self._build_scan_timings(duration_ms)
+        self.result = TextureDoctorResult.from_facts(self.facts, tuple(findings), timings)
+
         _logger.info(
             "Texture Doctor scan complete: %d nodes, %d unique materials, %d texture refs, %d findings (%.1f ms)",
             inventory.total_nodes,
@@ -177,6 +187,16 @@ class TextureDoctorScanner(BaseScanner):
         )
 
         yield ("rules", 1, 1, findings)
+
+    def _build_scan_timings(self, total_ms: float) -> ScanTimings:
+        measurements = self._profiler.report()
+        return ScanTimings(
+            nodes_ms=measurements.get("texture_doctor.nodes", 0.0),
+            materials_maps_ms=measurements.get("texture_doctor.materials_maps", 0.0),
+            filesystem_ms=measurements.get("texture_doctor.filesystem", 0.0),
+            rules_ms=measurements.get("texture_doctor.rules", 0.0),
+            total_ms=total_ms,
+        )
 
 
 

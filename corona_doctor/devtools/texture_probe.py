@@ -1,10 +1,22 @@
 """Development-only, READ-ONLY Scene Inventory + Texture Doctor probe.
 
 Runs the real production scanner (``TextureDoctorScanner``) against the
-current 3ds Max scene, prints a concise human-readable summary, and
-writes a full structured JSON report for tuning. Strictly read-only —
-same guarantee as the scanner itself (see
-scanners/texture_doctor_scanner.py's module docstring).
+current 3ds Max scene and prints THREE clearly separated sections:
+
+  A) the production-facing report (``reports/texture_report.py`` — what a
+     user would actually see; no raw repr/AnimHandle/internal dumps)
+  B) developer diagnostics (scene node breakdown, AnimHandle fallback
+     counters, rejected-map property samples — never shown in production
+     UI, see ``core/texture_models.py::TextureDoctorDiagnostics``)
+  C) a short HOST VALIDATION block for pasting into a bug report
+
+It also writes a full structured JSON report for tuning. Strictly
+read-only — same guarantee as the scanner itself (see
+scanners/texture_doctor_scanner.py's module docstring). This module is a
+development tool only: nothing in the production scan/rule/report path
+depends on it (see docs/TEXTURE_DOCTOR.md, "Production result model") —
+it depends on the production scanner and report formatter, not the other
+way around.
 
 Run from the 3ds Max Python listener::
 
@@ -23,6 +35,8 @@ from corona_doctor.core.diagnostics import DiagnosticEngine
 from corona_doctor.core.events import EventBus
 from corona_doctor.logging.logger import default_log_path
 from corona_doctor.performance.profiler import Profiler
+from corona_doctor.core.texture_models import TextureScanFacts
+from corona_doctor.reports.texture_report import format_host_validation_block, format_texture_doctor_report
 from corona_doctor.scanners.texture_doctor_scanner import TextureDoctorScanner
 
 
@@ -38,18 +52,34 @@ def run_texture_probe(write_json: bool = True) -> dict[str, Any]:
     scanner = TextureDoctorScanner(profiler=profiler)
     engine = DiagnosticEngine(EventBus())
 
-    result = engine.run(scanner)
+    engine.run(scanner)
 
     facts = scanner.facts
-    inventory = scanner.inventory
+    result = scanner.result
+
+    if result is None or facts is None:
+        print("Texture Doctor probe: scan did not complete (see errors above/in the log).")
+        return {}
+
+    with profiler.measure("texture_doctor.report_format"):
+        production_report = format_texture_doctor_report(result)
+
+    fallback_identities = facts.diagnostics.materials_using_fallback_identity + facts.diagnostics.maps_using_fallback_identity
+    host_block = format_host_validation_block(result, fallback_identities=fallback_identities)
+
+    print(production_report)
+    print()
+    print(_format_dev_diagnostics(facts))
+    print()
+    print(host_block)
 
     report: dict[str, Any] = {
-        "inventory": asdict(inventory) if inventory else None,
-        "texture_references": [asdict(r) for r in scanner.texture_references],
-        "unknown_map_classes": list(facts.unknown_map_classes) if facts else [],
-        "errors": list(facts.errors) if facts else [],
-        "diagnostics": asdict(facts.diagnostics) if facts else None,
-        "compatibility_warnings": list(facts.compatibility_warnings) if facts else [],
+        "inventory": asdict(result.inventory),
+        "texture_references": [asdict(r) for r in result.texture_references],
+        "unknown_map_classes": list(result.unknown_map_classes),
+        "errors": list(result.errors),
+        "diagnostics": asdict(facts.diagnostics),
+        "compatibility_warnings": list(result.compatibility_warnings),
         "findings": [
             {
                 "rule_id": f.rule_id,
@@ -63,8 +93,6 @@ def run_texture_probe(write_json: bool = True) -> dict[str, Any]:
         "timings_ms": profiler.report(),
     }
 
-    _print_summary(report)
-
     if write_json:
         path = _write_json_report(report)
         print(f"\nJSON report written to: {path}")
@@ -72,73 +100,51 @@ def run_texture_probe(write_json: bool = True) -> dict[str, Any]:
     return report
 
 
-def _print_summary(report: dict[str, Any]) -> None:
-    inv = report["inventory"] or {}
+def _format_dev_diagnostics(facts: TextureScanFacts) -> str:
+    """Scene node breakdown + AnimHandle/rejected-map internals.
+
+    Never shown in production UI/report — see
+    ``core/texture_models.py::TextureDoctorDiagnostics``.
+    """
+
+    inv = facts.inventory
+    diag = facts.diagnostics
+
     lines = [
-        "Scene Inventory",
-        "",
-        f"Nodes            {inv.get('total_nodes', 0)}",
-        f"  Geometry       {inv.get('geometry_count', 0)}",
-        f"  Lights         {inv.get('light_count', 0)}",
-        f"  Cameras        {inv.get('camera_count', 0)}",
-        f"  Helpers        {inv.get('helper_count', 0)}",
-        f"  Hidden         {inv.get('hidden_count', 0)}",
-        f"  Frozen         {inv.get('frozen_count', 0)}",
-        "",
-        f"Nodes with material assigned  {inv.get('nodes_with_material_count', 0)}",
-        f"Unique materials              {inv.get('unique_material_count', 0)}",
-        "",
-        f"Texture references     {len(report['texture_references'])}",
-        f"Unique texture files   {inv.get('unique_external_texture_count', 0)}",
-        f"Missing                {inv.get('missing_texture_count', 0)}",
-        f"8K+                    {inv.get('oversized_8k_count', 0)}",
-        f"16K+                   {inv.get('oversized_16k_count', 0)}",
-        f"Potential duplicates   {inv.get('duplicate_group_count', 0)} group(s)",
-        "",
-        f"Unknown map classes    {len(report['unknown_map_classes'])}",
-        f"Errors                 {len(report['errors'])}",
-        "",
-        f"Scan duration          {inv.get('scan_duration_ms', 0):.1f} ms",
-        "",
-        "Findings",
-    ]
-    if report["findings"]:
-        for f in report["findings"]:
-            lines.append(f"  [{f['severity'].upper()}] {f['rule_id']}  {f['title']} — {f['summary']}")
-    else:
-        lines.append("  (none)")
-
-    warnings = report.get("compatibility_warnings") or []
-    lines += ["", "Compatibility warnings"]
-    if warnings:
-        for w in warnings:
-            lines.append(f"  [WARN] {w}")
-    else:
-        lines.append("  (none)")
-
-    diag = report.get("diagnostics") or {}
-    lines += [
-        "",
         "Dev diagnostics (not production UI)",
-        f"  Root materials encountered              {diag.get('root_materials_encountered', 0)}",
-        f"  Materials with valid AnimHandle          {diag.get('materials_with_valid_handle', 0)}",
-        f"  Materials using fallback identity        {diag.get('materials_using_fallback_identity', 0)}",
-        f"  Sub-material/sub-map edges traversed     {diag.get('sub_material_edges_traversed', 0)}",
-        f"  Map nodes encountered                    {diag.get('map_nodes_encountered', 0)}",
-        f"  Maps with valid AnimHandle                {diag.get('maps_with_valid_handle', 0)}",
-        f"  Maps using fallback identity              {diag.get('maps_using_fallback_identity', 0)}",
-        f"  External-file-backed maps recognized     {diag.get('external_file_backed_maps_recognized', 0)}",
-        f"  Maps with candidate filename properties  {diag.get('maps_with_candidate_filename_properties', 0)}",
-        f"  Maps rejected as non-file-backed         {diag.get('maps_rejected_as_non_file_backed', 0)}",
+        "",
+        "Scene Inventory",
+        f"  Nodes            {inv.total_nodes}",
+        f"    Geometry       {inv.geometry_count}",
+        f"    Lights         {inv.light_count}",
+        f"    Cameras        {inv.camera_count}",
+        f"    Helpers        {inv.helper_count}",
+        f"    Hidden         {inv.hidden_count}",
+        f"    Frozen         {inv.frozen_count}",
+        f"  Nodes with material assigned  {inv.nodes_with_material_count}",
+        f"  Unique materials              {inv.unique_material_count}",
+        f"  16K+ textures                 {inv.oversized_16k_count}",
+        f"  Unknown map classes           {len(facts.unknown_map_classes)}",
+        "",
+        f"  Root materials encountered              {diag.root_materials_encountered}",
+        f"  Materials with valid AnimHandle          {diag.materials_with_valid_handle}",
+        f"  Materials using fallback identity        {diag.materials_using_fallback_identity}",
+        f"  Sub-material/sub-map edges traversed     {diag.sub_material_edges_traversed}",
+        f"  Map nodes encountered                    {diag.map_nodes_encountered}",
+        f"  Maps with valid AnimHandle                {diag.maps_with_valid_handle}",
+        f"  Maps using fallback identity              {diag.maps_using_fallback_identity}",
+        f"  External-file-backed maps recognized     {diag.external_file_backed_maps_recognized}",
+        f"  Maps with candidate filename properties  {diag.maps_with_candidate_filename_properties}",
+        f"  Maps rejected as non-file-backed         {diag.maps_rejected_as_non_file_backed}",
     ]
-    rejected_samples = diag.get("rejected_map_samples") or []
-    if rejected_samples:
+
+    if diag.rejected_map_samples:
         lines.append("  Rejected map class samples (first-seen per class):")
-        for sample in rejected_samples:
+        for sample in diag.rejected_map_samples:
             props = ", ".join(sample.get("property_names", [])[:20]) or "(none)"
             lines.append(f"    {sample.get('map_class')}: properties = {props}")
 
-    print("\n".join(lines))
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":  # pragma: no cover - manual/host invocation only

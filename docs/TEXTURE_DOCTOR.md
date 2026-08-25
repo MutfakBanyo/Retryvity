@@ -25,9 +25,15 @@ header. That's the entire write surface — none.
   Corona light/camera counts, texture extension breakdown.
 - **TXT-001 Missing Texture** (critical) — an external texture reference
   points to a file that doesn't exist.
-- **TXT-002 Duplicate Texture Reference** (optimization) — the same file
-  is referenced by more than one map node. Not automatically bad —
-  shared textures are normal — just surfaced for review.
+- **TXT-002 Texture Reused By Multiple Map Nodes** (optimization) — the
+  same file is pointed at by more than one map node. This is REUSE, not a
+  defect claim — a shared/instanced bitmap across several materials is
+  normal. The rule cannot and does not try to tell that apart from
+  genuinely-redundant map nodes (both look identical from path data
+  alone); it is a list worth a quick look, never a list of errors. See
+  "Production result model" below for the semantic audit that produced
+  this wording (this rule used to be titled "Duplicate Texture
+  Reference", which read as a defect claim it never was).
 - **TXT-003 Potential Duplicate Asset Paths** (optimization, confidence
   0.6) — same filename *and* file size at *different* paths. Explicitly
   a "potential" match: matching filename+size does not prove identical
@@ -85,7 +91,18 @@ raising):
 2. `.HDRIMapName` — used by some environment/dome map classes.
 
 A map class with neither property resolves to `unsupported`/`unknown`
-and is recorded in `unknown_map_classes` rather than silently dropped.
+and is recorded in `unknown_map_classes` rather than silently dropped. A
+real-host scan encountered `CoronaColor`, `Color_Correction`,
+`CoronaTriplanar`, `CompositeTexturemap`, `falloff`, `CoronaColorCorrect`
+and others this way — the probe correctly found no `.filename`/
+`.HDRIMapName` on the *specific instances encountered*. That is not the
+same claim as "these classes can never be file-backed" — a future
+Triplanar/CompositeTexturemap variant, or one configured differently,
+could expose a different property. `_probe_filename` never hardcodes a
+class-name exclusion list; it only ever checks the two candidate property
+names via `rt.isProperty`, so any class exposing one of them (now or in a
+future plugin version) is picked up automatically, and any class that
+doesn't degrades safely to "unsupported" instead of being guessed at.
 
 ## Identity: why Animatable handles, not `id()`
 
@@ -204,9 +221,16 @@ Two techniques keep this from becoming quadratic on a production scene:
   header-read exactly once, not 50 times.
 
 Per-stage timings are recorded via the existing `performance/profiler.py`
-and logged (not printed) at scan completion; the devtools probe
-(`devtools/texture_probe.py`) surfaces them in its JSON report's
-`timings_ms`.
+and logged (not printed) at scan completion; `TextureDoctorResult.timings`
+(`ScanTimings`) exposes the same breakdown as typed fields, and the
+devtools probe (`devtools/texture_probe.py`) surfaces the full dict in its
+JSON report's `timings_ms`, plus its own `texture_doctor.report_format`
+measurement around the (pure, non-scanning) call to
+`format_texture_doctor_report()`. Neither `reports/texture_report.py` nor
+`core/texture_query.py` ever touches pymxs, the filesystem, or the
+scanner again — both operate purely on the `TextureDoctorResult`/
+`ExternalTextureReference` data a scan already produced, so formatting or
+re-filtering/re-sorting a result never re-triggers scene traversal.
 
 ## Known limitations
 
@@ -245,21 +269,68 @@ scan and flags results that contradict each other — logged as a warning
 Each of these was directly observed in the real-host bug this section
 documents. A clean scan reports an empty `compatibility_warnings` tuple.
 
+## Production result model
+
+`TextureDoctorScanner.result` (`core/texture_models.py::TextureDoctorResult`)
+is the stable, production-facing bundle of a scan: `inventory`,
+`texture_references`, `findings`, `compatibility_warnings`,
+`unknown_map_classes`, `errors`, and a `timings: ScanTimings` breakdown
+(node traversal / material-map graph / filesystem / rule evaluation, each
+in ms — mirrors `performance/profiler.py`'s `texture_doctor.*` labels).
+It deliberately excludes `TextureScanFacts.diagnostics` (AnimHandle
+samples, rejected-map property dumps) — that stays development-only, read
+only via `devtools/texture_probe.py`. `scanner.inventory` /
+`scanner.facts` / `scanner.texture_references` still exist unchanged for
+existing callers; `scanner.result` is additive, not a replacement.
+
+- **`reports/texture_report.py`** — `format_texture_doctor_report()`
+  turns a `TextureDoctorResult` into the concise, user-safe text report
+  (counts + findings, no internal debug detail);
+  `format_host_validation_block()` produces the short block a developer
+  pastes into a bug report after a real-host run.
+- **`core/texture_query.py`** — pure-Python filtering
+  (`TextureFilter.ALL/MISSING/OVERSIZED/LOCAL/DUPLICATE`, plus
+  `filter_by_extension`/`filter_by_map_class`/`filter_by_material`/
+  `filter_by_object`) and sorting (`TextureSortKey.FILENAME/RESOLUTION/
+  FILE_SIZE/REFERENCE_COUNT/PATH`, `sort_findings_by_severity`) over
+  already-scanned data. No Qt, no pymxs, no new filesystem/scene access —
+  a future UI table can delegate here instead of re-implementing the
+  same logic in a `QSortFilterProxyModel`. Every sort tie-breaks on
+  filename, so results are deterministic across repeated calls.
+- **Repairability vs. "fixability"**: `Finding.repairability`
+  (`core/models.py::Repairability` — `SAFE`/`REVIEW`/`MANUAL`/`NONE`) is
+  the existing field for this; no separate enum was introduced. This
+  milestone remains diagnostic-only — every texture rule still returns
+  `MANUAL` or `NONE`, never `SAFE`, since no rule here performs a
+  genuinely deterministic, reversible fix (see "What v1 does not detect
+  / does not do").
+- **Dev-probe independence**: `TextureDoctorScanner` and every rule/
+  report/query module above have zero import of `devtools/`; the
+  dependency runs the other way (`devtools/texture_probe.py` imports the
+  production scanner + `reports/texture_report.py`), so the probe can be
+  deleted without breaking the production scan/rule/report path — see
+  `tests/test_adapter_contract.py`-style static checks are not needed
+  here since there is simply no such import to regress.
+
 ## Host validation procedure
 
-Unit-tested and import-tested (see below) but **not yet run against a
-real 3ds Max scene** — that requires the real host. Run this from the
-3ds Max Python Listener:
+Already validated once against a real production scene (462 nodes, 262
+unique materials, 240 texture references, 0 scanner errors — see git
+history around the "real host validation" milestone). Re-run after any
+scanner/rule/report change from the 3ds Max Python Listener:
 
 ```python
 from corona_doctor.devtools.texture_probe import run_texture_probe
 run_texture_probe()
 ```
 
-This scans the current scene, prints a Scene Inventory + Texture Doctor
-summary, and writes a full JSON report to
-`%LOCALAPPDATA%\CoronaDoctor\texture_probe.json` (developer JSON only —
-local paths, never uploaded, no network transfer, no telemetry).
+This scans the current scene and prints three clearly separated
+sections — the production report (`reports/texture_report.py`, what a
+user would see), dev diagnostics (AnimHandle/rejected-map internals, not
+production UI), and a short "HOST VALIDATION" block — then writes a full
+JSON report to `%LOCALAPPDATA%\CoronaDoctor\texture_probe.json`
+(developer JSON only — local paths, never uploaded, no network transfer,
+no telemetry).
 
 After running it on a real production scene, specifically check:
 
@@ -267,7 +338,11 @@ After running it on a real production scene, specifically check:
       file path via `.filename` (not left in `unknown_map_classes`)
 - [ ] Node/material/map counts look plausible for the scene you know
 - [ ] At least one known-missing texture (if any) shows up under TXT-001
-- [ ] Scan duration is acceptable for your scene's size (see
-      `timings_ms` in the JSON report)
+- [ ] TXT-002 findings (if any) read as reuse, not as "duplicate = bad"
+- [ ] "HOST VALIDATION" block's `fallback identities used` is 0 (or, if
+      not, that materials/maps still traversed correctly per
+      `compatibility warnings`)
+- [ ] Scan duration is acceptable for your scene's size (see the
+      production report and `timings_ms` in the JSON report)
 - [ ] The panel's Overview/Textures views populate correctly after
       clicking "Scan Scene"
