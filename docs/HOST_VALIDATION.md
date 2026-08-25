@@ -75,6 +75,17 @@ Listener and writes the full structured report to
 Listener (the full symbol lists, property names, per-step timings, and
 any errors encountered).
 
+## 1c. Scene Inventory + Texture Doctor probe (production scanner)
+
+```python
+from corona_doctor.devtools.texture_probe import run_texture_probe
+run_texture_probe()
+```
+
+Read-only — see docs/TEXTURE_DOCTOR.md for the full guarantee, what it
+detects, and a real-host validation checklist. Writes
+`%LOCALAPPDATA%\CoronaDoctor\texture_probe.json`.
+
 ## 2. Launch and inspect the panel manually
 
 ```python
@@ -89,9 +100,15 @@ Check:
 - [ ] **Overview** shows "No scan has been performed yet." and a
       disabled-until-clicked `Scan Scene` button — no scene scan runs
       automatically on open.
-- [ ] Clicking **Scan Scene** runs the demo scan, updates the health
-      score arc, the Critical/Warnings/Optimization tiles, and populates
-      the **Diagnostics** list with 9 demo findings.
+- [ ] Clicking **Scan Scene** runs the real Scene Inventory + Texture
+      Doctor scan (not the demo scanner), updates the health score arc,
+      the Critical/Warnings/Optimization tiles, the Scene stat row
+      (Objects/Materials/Textures/Missing/8K+), and populates
+      **Diagnostics** with real TXT-00x findings (or none, on a clean
+      scene).
+- [ ] **Textures** shows the scanned reference count, populates the
+      table, and search/filter/sort all work without re-scanning the
+      scene (see docs/TEXTURE_DOCTOR.md).
 - [ ] **Environment** shows the real detected 3ds Max version, Python
       version, Qt version, and Corona detection state (not "unknown"
       for any of these on a properly configured machine).
