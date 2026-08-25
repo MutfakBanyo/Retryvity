@@ -300,3 +300,18 @@ registration succeeding: `install_corona_doctor.ms` calls
 attempt, regardless of whether that attempt succeeded. An older/
 unsupported 3ds Max host (no `#cuiRegisterMenus` callback) degrades to
 one quiet log line per session with no menu, not a startup exception.
+
+The auto-generated `CoronaDoctor_Startup.ms` (written by
+`install_corona_doctor.ms` into `getDir #userStartupScripts`) is
+deliberately minimal: one `if doesFileExist @"..." then ( try (fileIn
+@"...") catch () )` line per real, directly-authored file
+(`maxscript/helpers.ms`, `maxscript/startup_guard.ms`) — never a
+multi-line compound block or nested-escaped try/catch assembled across
+several `format` calls. A real host hit `Type error: Call needs function
+or class, got: undefined` from an earlier, more elaborate version of
+this generated file; hand-verifying MAXScript-inside-a-MAXScript-string
+without a real host to test against is exactly the kind of thing this
+codebase should not do twice. If a host still has a stale copy of
+`CoronaDoctor_Startup.ms` from before this fix, re-running
+`install_corona_doctor.ms` (drag it onto the viewport again) overwrites
+it with the current template — the file is not self-updating.

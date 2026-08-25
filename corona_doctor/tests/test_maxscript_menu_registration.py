@@ -130,3 +130,77 @@ def test_bootstrap_exposes_about_entry_point_for_the_about_macroscript():
     helpers = _helpers_source()
     assert "show_corona_doctor_about" in helpers
     assert "CoronaDoctor_About" in helpers
+
+
+def test_startup_guard_ms_exists_and_calls_the_safe_wrapper():
+    guard_path = _REPO_ROOT / "corona_doctor" / "maxscript" / "startup_guard.ms"
+    assert guard_path.is_file()
+    guard_source = guard_path.read_text(encoding="utf-8")
+    assert "isGlobal #coronaDoctorSafeRegisterMenu" in guard_source
+    assert "coronaDoctorSafeRegisterMenu()" in guard_source
+
+
+def _render_maxscript_format(template: str, *args: str) -> str:
+    """Reproduce MAXScript ``format``'s escape/substitution rules for
+    exactly the escapes install_corona_doctor.ms's generator uses
+    (``\\"``, ``%``, ``\\n``) — enough to render the ACTUAL text that
+    gets written to the auto-generated CoronaDoctor_Startup.ms, so this
+    test catches a real escaping bug instead of just pattern-matching the
+    template source. See the real-host regression this guards: "Type
+    error: Call needs function or class, got: undefined" from an earlier
+    multi-line version of the generated file."""
+
+    out: list[str] = []
+    arg_iter = iter(args)
+    i = 0
+    while i < len(template):
+        ch = template[i]
+        if ch == "\\" and i + 1 < len(template):
+            nxt = template[i + 1]
+            if nxt == "n":
+                out.append("\n")
+            elif nxt == "t":
+                out.append("\t")
+            elif nxt in ('"', "\\"):
+                out.append(nxt)
+            else:
+                out.append(nxt)
+            i += 2
+            continue
+        if ch == "%":
+            out.append(str(next(arg_iter)))
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def test_generated_startup_guard_line_is_a_single_self_contained_statement():
+    """Simulates exactly what install_corona_doctor.ms's format calls
+    write for one file path, and asserts the result is one physical
+    line with balanced parens/quotes and no nested escaped try/catch
+    text — the real-host failure mode this was rewritten to avoid."""
+
+    template = r'if doesFileExist @\"%\" then ( try ( fileIn @\"%\" ) catch () )\n'
+    path = r"D:\proj\corona_doctor\maxscript\helpers.ms"
+    rendered = _render_maxscript_format(template, path, path)
+
+    assert rendered.count("\n") == 1
+    assert rendered.endswith("\n")
+    body = rendered.rstrip("\n")
+    assert body.count("(") == body.count(")")
+    assert body.count('"') % 2 == 0
+    assert body == f'if doesFileExist @"{path}" then ( try ( fileIn @"{path}" ) catch () )'
+
+
+def test_installer_generates_one_guarded_line_per_file_no_multiline_compound_block():
+    installer = _installer_source()
+    assert 'format "if doesFileExist @\\"%\\" then ( try ( fileIn @\\"%\\" ) catch () )\\n" helpersPath helpersPath to:f' in installer
+    assert (
+        'format "if doesFileExist @\\"%\\" then ( try ( fileIn @\\"%\\" ) catch () )\\n" startupGuardPath startupGuardPath to:f'
+        in installer
+    )
+    # The old, real-host-broken shape: a "then (" opening a block that
+    # spans multiple separate format calls. Must not reappear.
+    assert 'then (\\n"' not in installer
