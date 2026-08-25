@@ -124,6 +124,31 @@ class MaxAdapter:
         except Exception:  # noqa: BLE001
             return None
 
+    def get_animatable_handle(self, obj) -> int | None:
+        """Stable identity for a node/material/map for the life of this scan.
+
+        Materials and maps can be *shared* (instanced) across many
+        materials/nodes, and pymxs may hand back a freshly-constructed
+        Python wrapper object each time the same underlying MAXScript
+        object is fetched through a different path (e.g. via
+        ``node.material`` vs. a sub-material lookup) — so Python's
+        ``id()`` is NOT a reliable identity key across a scan; it only
+        identifies one specific wrapper instance, not the underlying Max
+        object. ``rt.getHandleByAnim()`` returns the MAXScript-level
+        Animatable handle (nodes, materials, maps, and controllers are all
+        Animatable), which is stable for the object's session lifetime —
+        this is the identity used for cycle detection and dedup during
+        scene/material/map traversal (see adapters/scene_adapter.py).
+        """
+
+        if pymxs is None:
+            return None
+        try:
+            handle = pymxs.runtime.getHandleByAnim(obj)
+            return int(handle)
+        except Exception:  # noqa: BLE001
+            return None
+
     def get_scene_object_count(self) -> int | None:
         """Cheap scene stat used only for environment context, not a scan."""
 
