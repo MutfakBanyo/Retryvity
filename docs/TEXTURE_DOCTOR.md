@@ -18,9 +18,11 @@ header. That's the entire write surface — none.
 ## What v1 detects
 
 - **Scene Inventory**: node counts by category (geometry / light /
-  camera / helper / shape / group), hidden/frozen counts, material
-  counts (total assignments vs. unique instances), map counts, Corona
-  light/camera counts, texture extension breakdown.
+  camera / helper / shape / group), hidden/frozen counts,
+  `nodes_with_material_count` (how many nodes have *a* material assigned
+  — not a material count) vs. `unique_material_count` (deduplicated
+  distinct materials actually discovered by traversal), map counts,
+  Corona light/camera counts, texture extension breakdown.
 - **TXT-001 Missing Texture** (critical) — an external texture reference
   points to a file that doesn't exist.
 - **TXT-002 Duplicate Texture Reference** (optimization) — the same file
@@ -97,6 +99,54 @@ underlying MAXScript object is fetched through a different path, so
 — the MAXScript-level Animatable handle, stable for the object's session
 lifetime — for both cycle detection and dedup during traversal. See that
 method's docstring in `adapters/max_adapter.py`.
+
+**Fallback identity.** A real 3ds Max 2026.2 host was observed returning
+`None` from `getHandleByAnim()` for some material objects despite
+Autodesk documenting AnimHandles as valid for every Animatable — this
+silently dropped every material from traversal (`SceneAdapter` used to
+`continue` past a `None` handle when building the root-material set).
+`SceneAdapter._identity()` now never drops an object for this reason: if
+the AnimHandle is unavailable it assigns a per-scan fallback identity
+keyed on Python `id(obj)` (negative, so it can never collide with a real
+handle). The fallback is only guaranteed stable for the life of the
+current scan — it is never persisted across scans/sessions, and it only
+fully dedups an object reachable via the *same* Python wrapper instance
+(not two independently-fetched wrappers of the same underlying object).
+`devtools/texture_probe.py`'s diagnostics report how many materials/maps
+used the fallback, so a real-host run can tell whether this path is being
+hit.
+
+## Node/material classification: why not a guessed string compare
+
+`SceneAdapter` used to classify scene nodes and material-graph objects by
+comparing `str(rt.superClassOf(obj))` against a hardcoded literal
+(`"Light"`, `"Camera"`, `"Material"`, `"TextureMap"`, ...). On a real host
+this failed for Corona light/camera nodes specifically — `classOf()`
+still matched `"CoronaLight"`/`"CoronaCam"` fine, but the generic
+`light_count`/`camera_count` came back 0 even though `corona_light_count`/
+`corona_camera_count` were correct — while it happened to still work for
+plain geometry. `_classify_by_equality()` (in `scene_adapter.py`) now
+layers three signals, most reliable first, and for scene nodes a fourth,
+even-more-authoritative one is checked before any of them:
+
+1. **Host collection membership** (`rt.lights`, `rt.cameras`,
+   `rt.geometry`, `rt.helpers`, `rt.shapes`) — the categorized collections
+   3ds Max itself maintains; checked light/camera first since a render
+   plugin's light/camera nodes have been observed sharing
+   geometry-class icon plumbing on some hosts.
+2. **Live Class-object equality** (`rt.superClassOf(obj) == rt.Light`),
+   not a string compare — robust to whatever `str()` happens to produce.
+3. **Normalized string compare**, only as a last resort.
+
+A `Target`/`TargetObject` node (the crosshair helper a targeted light or
+camera points at) is special-cased to `"helper"` before any of the above
+— historical Max behavior places it under `GeometryClass`, which would
+otherwise inflate `geometry_count` with non-renderable helper nodes.
+
+The same `_classify_by_equality()` function (with a different attribute
+map) also replaces the old `superclass == "Material"` /
+`superclass == "TextureMap"` string checks used while walking the
+material/map graph.
 
 ## Threshold logic
 
@@ -180,6 +230,20 @@ and logged (not printed) at scan completion; the devtools probe
 - **No screen-space awareness** for TXT-004 (see above) — a 4K texture on
   a background prop and a 4K texture filling the frame are flagged
   identically in v1.
+
+## No silent zeroes
+
+`scanners/texture_doctor_scanner.py::_check_invariants()` runs after every
+scan and flags results that contradict each other — logged as a warning
+(never raised, never shown as a UI error) and surfaced in
+`TextureScanFacts.compatibility_warnings`:
+
+- `nodes_with_material_count > 0` and `unique_material_count == 0`
+- `corona_light_count > light_count`
+- `corona_camera_count > camera_count`
+
+Each of these was directly observed in the real-host bug this section
+documents. A clean scan reports an empty `compatibility_warnings` tuple.
 
 ## Host validation procedure
 

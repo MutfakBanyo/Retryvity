@@ -33,6 +33,7 @@ from corona_doctor.core.rules import RuleEngine
 from corona_doctor.core.texture_models import (
     ExternalTextureReference,
     SceneInventory,
+    TextureDoctorDiagnostics,
     TextureScanFacts,
     TextureThresholds,
 )
@@ -121,23 +122,43 @@ class TextureDoctorScanner(BaseScanner):
 
         texture_references = _apply_reference_counts(texture_references)
 
-        material_assignment_count = sum(1 for n in node_facts if n.material_handle is not None)
+        nodes_with_material_count = sum(1 for n in node_facts if n.material_handle is not None)
         duration_ms = (time.perf_counter() - started_at) * 1000
 
         inventory = _build_inventory(
             node_facts=node_facts,
             texture_references=texture_references,
             scene_adapter=self._scene,
-            material_assignment_count=material_assignment_count,
+            nodes_with_material_count=nodes_with_material_count,
             thresholds=self._thresholds,
             duration_ms=duration_ms,
         )
+
+        diagnostics = TextureDoctorDiagnostics(
+            root_materials_encountered=self._scene.root_materials_encountered,
+            materials_with_valid_handle=self._scene.materials_with_valid_handle,
+            materials_using_fallback_identity=self._scene.materials_using_fallback_identity,
+            sub_material_edges_traversed=self._scene.sub_material_edges_traversed,
+            map_nodes_encountered=self._scene.map_nodes_encountered,
+            maps_with_valid_handle=self._scene.maps_with_valid_handle,
+            maps_using_fallback_identity=self._scene.maps_using_fallback_identity,
+            external_file_backed_maps_recognized=self._scene.external_file_backed_maps_recognized,
+            maps_with_candidate_filename_properties=self._scene.maps_with_candidate_filename_properties,
+            maps_rejected_as_non_file_backed=self._scene.maps_rejected_as_non_file_backed,
+            identity_samples=tuple(self._scene.identity_samples),
+            rejected_map_samples=tuple(self._scene.rejected_map_samples),
+        )
+        compatibility_warnings = tuple(_check_invariants(inventory))
+        for warning in compatibility_warnings:
+            _logger.warning("Texture Doctor compatibility warning: %s", warning)
 
         self.facts = TextureScanFacts(
             inventory=inventory,
             texture_references=tuple(texture_references),
             unknown_map_classes=tuple(self._scene.unknown_map_classes),
             errors=tuple(self._scene.errors),
+            diagnostics=diagnostics,
+            compatibility_warnings=compatibility_warnings,
         )
         self.inventory = inventory
         self.texture_references = tuple(texture_references)
@@ -215,7 +236,7 @@ def _build_inventory(
     node_facts: list[NodeFacts],
     texture_references: list[ExternalTextureReference],
     scene_adapter: SceneAdapter,
-    material_assignment_count: int,
+    nodes_with_material_count: int,
     thresholds: TextureThresholds,
     duration_ms: float,
 ) -> SceneInventory:
@@ -253,7 +274,7 @@ def _build_inventory(
         group_count=sum(1 for n in node_facts if n.is_group_head),
         hidden_count=sum(1 for n in node_facts if n.is_hidden),
         frozen_count=sum(1 for n in node_facts if n.is_frozen),
-        material_count=material_assignment_count,
+        nodes_with_material_count=nodes_with_material_count,
         unique_material_count=scene_adapter.unique_material_count,
         map_reference_count=scene_adapter.map_reference_count,
         unique_external_texture_count=len(unique_paths),
@@ -270,3 +291,32 @@ def _build_inventory(
 
 _CORONA_LIGHT_CLASSES = ("CoronaLight", "CoronaSun")
 _CORONA_CAMERA_CLASSES = ("CoronaCam",)
+
+
+def _check_invariants(inventory: SceneInventory) -> list[str]:
+    """No silent zeroes: flag scan results that contradict each other.
+
+    These never crash/raise — they're logged (see caller) and surfaced in
+    ``TextureScanFacts.compatibility_warnings`` for the devtools probe, not
+    presented as an error in production UI. See docs/TEXTURE_DOCTOR.md,
+    "No silent zeroes".
+    """
+
+    warnings: list[str] = []
+    if inventory.nodes_with_material_count > 0 and inventory.unique_material_count == 0:
+        warnings.append(
+            f"{inventory.nodes_with_material_count} node(s) have a material assigned but "
+            "0 unique materials were discovered during traversal — material identity or "
+            "traversal is likely broken on this host."
+        )
+    if inventory.corona_light_count > inventory.light_count:
+        warnings.append(
+            f"corona_light_count ({inventory.corona_light_count}) exceeds light_count "
+            f"({inventory.light_count}) — generic light classification is likely broken on this host."
+        )
+    if inventory.corona_camera_count > inventory.camera_count:
+        warnings.append(
+            f"corona_camera_count ({inventory.corona_camera_count}) exceeds camera_count "
+            f"({inventory.camera_count}) — generic camera classification is likely broken on this host."
+        )
+    return warnings

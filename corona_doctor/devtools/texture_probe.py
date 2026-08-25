@@ -48,6 +48,8 @@ def run_texture_probe(write_json: bool = True) -> dict[str, Any]:
         "texture_references": [asdict(r) for r in scanner.texture_references],
         "unknown_map_classes": list(facts.unknown_map_classes) if facts else [],
         "errors": list(facts.errors) if facts else [],
+        "diagnostics": asdict(facts.diagnostics) if facts else None,
+        "compatibility_warnings": list(facts.compatibility_warnings) if facts else [],
         "findings": [
             {
                 "rule_id": f.rule_id,
@@ -83,7 +85,8 @@ def _print_summary(report: dict[str, Any]) -> None:
         f"  Hidden         {inv.get('hidden_count', 0)}",
         f"  Frozen         {inv.get('frozen_count', 0)}",
         "",
-        f"Materials        {inv.get('material_count', 0)}  ({inv.get('unique_material_count', 0)} unique)",
+        f"Nodes with material assigned  {inv.get('nodes_with_material_count', 0)}",
+        f"Unique materials              {inv.get('unique_material_count', 0)}",
         "",
         f"Texture references     {len(report['texture_references'])}",
         f"Unique texture files   {inv.get('unique_external_texture_count', 0)}",
@@ -104,6 +107,36 @@ def _print_summary(report: dict[str, Any]) -> None:
             lines.append(f"  [{f['severity'].upper()}] {f['rule_id']}  {f['title']} — {f['summary']}")
     else:
         lines.append("  (none)")
+
+    warnings = report.get("compatibility_warnings") or []
+    lines += ["", "Compatibility warnings"]
+    if warnings:
+        for w in warnings:
+            lines.append(f"  [WARN] {w}")
+    else:
+        lines.append("  (none)")
+
+    diag = report.get("diagnostics") or {}
+    lines += [
+        "",
+        "Dev diagnostics (not production UI)",
+        f"  Root materials encountered              {diag.get('root_materials_encountered', 0)}",
+        f"  Materials with valid AnimHandle          {diag.get('materials_with_valid_handle', 0)}",
+        f"  Materials using fallback identity        {diag.get('materials_using_fallback_identity', 0)}",
+        f"  Sub-material/sub-map edges traversed     {diag.get('sub_material_edges_traversed', 0)}",
+        f"  Map nodes encountered                    {diag.get('map_nodes_encountered', 0)}",
+        f"  Maps with valid AnimHandle                {diag.get('maps_with_valid_handle', 0)}",
+        f"  Maps using fallback identity              {diag.get('maps_using_fallback_identity', 0)}",
+        f"  External-file-backed maps recognized     {diag.get('external_file_backed_maps_recognized', 0)}",
+        f"  Maps with candidate filename properties  {diag.get('maps_with_candidate_filename_properties', 0)}",
+        f"  Maps rejected as non-file-backed         {diag.get('maps_rejected_as_non_file_backed', 0)}",
+    ]
+    rejected_samples = diag.get("rejected_map_samples") or []
+    if rejected_samples:
+        lines.append("  Rejected map class samples (first-seen per class):")
+        for sample in rejected_samples:
+            props = ", ".join(sample.get("property_names", [])[:20]) or "(none)"
+            lines.append(f"    {sample.get('map_class')}: properties = {props}")
 
     print("\n".join(lines))
 

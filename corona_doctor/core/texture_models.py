@@ -114,7 +114,12 @@ class SceneInventory:
     hidden_count: int = 0
     frozen_count: int = 0
 
-    material_count: int = 0
+    # Nodes with a material assigned — NOT a count of materials. Renamed
+    # from the misleading "material_count" after a real-host scan showed
+    # 363 here alongside 0 unique_material_count and no obvious way to
+    # tell, from the field name alone, that this was assignment count, not
+    # material count. See docs/TEXTURE_DOCTOR.md, "Material count semantics".
+    nodes_with_material_count: int = 0
     unique_material_count: int = 0
 
     map_reference_count: int = 0
@@ -134,6 +139,32 @@ class SceneInventory:
 
 
 @dataclass(frozen=True)
+class TextureDoctorDiagnostics:
+    """Development-only counters/samples for real-host compatibility debugging.
+
+    Populated by ``SceneAdapter`` during traversal, surfaced by
+    ``devtools/texture_probe.py`` — not shown in production UI. Exists so a
+    real-host run can explain *why* a count looks wrong (e.g. 0 unique
+    materials with 363 material assignments) instead of silently reporting
+    a plausible-looking but incorrect result. See docs/TEXTURE_DOCTOR.md,
+    "No silent zeroes".
+    """
+
+    root_materials_encountered: int = 0
+    materials_with_valid_handle: int = 0
+    materials_using_fallback_identity: int = 0
+    sub_material_edges_traversed: int = 0
+    map_nodes_encountered: int = 0
+    maps_with_valid_handle: int = 0
+    maps_using_fallback_identity: int = 0
+    external_file_backed_maps_recognized: int = 0
+    maps_with_candidate_filename_properties: int = 0
+    maps_rejected_as_non_file_backed: int = 0
+    identity_samples: tuple[dict, ...] = ()
+    rejected_map_samples: tuple[dict, ...] = ()
+
+
+@dataclass(frozen=True)
 class TextureScanFacts:
     """Everything Texture Doctor's rules evaluate — facts only, no verdicts.
 
@@ -146,3 +177,5 @@ class TextureScanFacts:
     texture_references: tuple[ExternalTextureReference, ...] = ()
     unknown_map_classes: tuple[str, ...] = ()
     errors: tuple[str, ...] = ()
+    diagnostics: TextureDoctorDiagnostics = field(default_factory=TextureDoctorDiagnostics)
+    compatibility_warnings: tuple[str, ...] = ()

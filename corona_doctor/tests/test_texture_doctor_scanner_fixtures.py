@@ -190,7 +190,7 @@ def test_shared_submaterial_deduplicated_by_handle_not_by_id(monkeypatch):
     # referenced twice), CyclicOwner, MissingOwner, DupOwner.
     assert inv.unique_material_count == 5
     # 4 nodes actually have a material assigned (Box01..Box04).
-    assert inv.material_count == 4
+    assert inv.nodes_with_material_count == 4
 
 
 def test_map_graph_traversal_finds_expected_maps_without_infinite_loop(monkeypatch):
