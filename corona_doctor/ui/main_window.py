@@ -24,8 +24,8 @@ from corona_doctor.app.services import AppServices
 from corona_doctor.core.constants import APP_NAME
 from corona_doctor.core.events import EnvironmentUpdated, ScanFailed, ScanStarted
 from corona_doctor.logging.logger import get_logger
-from corona_doctor.scanners.demo_scanner import DemoScanner
 from corona_doctor.scanners.environment_scanner import EnvironmentScanner
+from corona_doctor.scanners.texture_doctor_scanner import TextureDoctorScanner
 from corona_doctor.ui.design.metrics import Spacing
 from corona_doctor.ui.icons.icon_registry import get_icon_registry
 from corona_doctor.ui.responsive.breakpoint_manager import BreakpointManager, LayoutState
@@ -34,12 +34,14 @@ from corona_doctor.ui.themes import load_dark_theme
 from corona_doctor.ui.views.diagnostics_view import DiagnosticsView
 from corona_doctor.ui.views.environment_view import EnvironmentView
 from corona_doctor.ui.views.overview_view import OverviewView
+from corona_doctor.ui.views.textures_view import TexturesView
 
 _logger = get_logger("ui")
 
 _NAV_ITEMS = (
     ("overview", "Overview", "overview"),
     ("diagnostics", "Diagnostics", "diagnostics"),
+    ("textures", "Textures", "diagnostics"),
     ("environment", "Environment", "environment"),
 )
 
@@ -52,6 +54,7 @@ class MainPanel(QWidget):
 
         self._breakpoints = BreakpointManager(self)
         self._breakpoints.state_changed.connect(self._on_layout_state_changed)
+        self._active_scanner: TextureDoctorScanner | None = None
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -68,12 +71,13 @@ class MainPanel(QWidget):
         self._stack = QStackedWidget(self)
         self._overview = OverviewView(self._stack)
         self._diagnostics = DiagnosticsView(self._stack)
+        self._textures = TexturesView(self._stack)
         self._environment = EnvironmentView(self._stack)
-        for view in (self._overview, self._diagnostics, self._environment):
+        for view in (self._overview, self._diagnostics, self._textures, self._environment):
             self._stack.addWidget(view)
         root.addWidget(self._stack, stretch=1)
 
-        self._overview.scan_requested.connect(self._start_demo_scan)
+        self._overview.scan_requested.connect(self._start_scene_scan)
 
         self._unsubscribe = services.bus.subscribe(self._on_event)
 
@@ -115,7 +119,7 @@ class MainPanel(QWidget):
         return nav
 
     def _show_section(self, section_id: str) -> None:
-        index = {"overview": 0, "diagnostics": 1, "environment": 2}.get(section_id, 0)
+        index = {"overview": 0, "diagnostics": 1, "textures": 2, "environment": 3}.get(section_id, 0)
         self._stack.setCurrentIndex(index)
         button = self._nav_buttons.get(section_id)
         if button is not None:
@@ -140,30 +144,44 @@ class MainPanel(QWidget):
             on_failed=lambda exc: _logger.warning("Environment probe failed: %s", exc),
         )
 
-    def _start_demo_scan(self) -> None:
+    def _start_scene_scan(self) -> None:
         self._overview.set_scanning(True)
+        scanner = TextureDoctorScanner()
+        self._active_scanner = scanner
 
         def on_finished(result) -> None:
             self._overview.show_summary(result.summary)
+            if scanner.inventory is not None:
+                self._overview.show_inventory(scanner.inventory)
             self._diagnostics.set_findings(list(result.findings))
+            self._textures.set_references(scanner.texture_references)
+            self._active_scanner = None
+
+        def on_failed(exc: Exception) -> None:
+            self._overview.show_error(
+                "Scan requires a running 3ds Max session." if not scanner.is_available() else "Scan failed. See log for details."
+            )
+            self._active_scanner = None
 
         run_scan_async(
             self._services.engine,
-            DemoScanner(),
+            scanner,
             on_finished=on_finished,
-            on_failed=lambda exc: self._overview.show_error("Scan failed. See log for details."),
+            on_failed=on_failed,
         )
 
     # -- events -----------------------------------------------------------
 
     def _on_event(self, event) -> None:
-        if isinstance(event, ScanStarted) and event.scanner_id == "demo":
+        if isinstance(event, ScanStarted) and event.scanner_id == TextureDoctorScanner.id:
             self._diagnostics.clear()
+            self._textures.clear()
         elif isinstance(event, ScanFailed):
             _logger.warning("Scan '%s' failed: %s", event.scanner_id, event.message)
 
     def _on_layout_state_changed(self, state_value: str) -> None:
         self._overview.set_stacked_layout(state_value == LayoutState.COMPACT.value)
+        self._textures.set_layout_state(LayoutState(state_value))
         self._nav.setVisible(state_value != LayoutState.COMPACT.value)
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override naming

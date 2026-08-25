@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QGridLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from corona_doctor.core.models import ScanSummary
+from corona_doctor.core.texture_models import SceneInventory
 from corona_doctor.ui.components.health_score import HealthScoreWidget
 from corona_doctor.ui.components.section_header import SectionHeader
 from corona_doctor.ui.design.metrics import Spacing
@@ -79,28 +80,35 @@ class OverviewView(QWidget):
         self._stats_grid.addWidget(self._optimization_tile, 0, 2)
         root.addLayout(self._stats_grid)
 
+        root.addWidget(SectionHeader("Scene", parent=self))
+        self._scene_grid = QGridLayout()
+        self._scene_grid.setSpacing(Spacing.SM)
+        self._objects_tile = _StatTile("Objects", self)
+        self._materials_tile = _StatTile("Materials", self)
+        self._textures_tile = _StatTile("Textures", self)
+        self._missing_tile = _StatTile("Missing", self)
+        self._oversized_tile = _StatTile("8K+", self)
+        self._scene_tiles = (
+            self._objects_tile,
+            self._materials_tile,
+            self._textures_tile,
+            self._missing_tile,
+            self._oversized_tile,
+        )
+        root.addLayout(self._scene_grid)
+
         root.addStretch(1)
 
         self.set_stacked_layout(False)
 
     def set_stacked_layout(self, stacked: bool) -> None:
-        """Switch stat tiles between a 3-column row and a single column.
+        """Switch stat tiles between a multi-column row and a single column.
 
         Called by the panel when the breakpoint manager reports COMPACT.
         """
 
-        for i in range(self._stats_grid.count()):
-            item = self._stats_grid.itemAt(i)
-            if item and item.widget():
-                self._stats_grid.removeWidget(item.widget())
-
-        widgets = [self._critical_tile, self._warning_tile, self._optimization_tile]
-        if stacked:
-            for row, widget in enumerate(widgets):
-                self._stats_grid.addWidget(widget, row, 0)
-        else:
-            for col, widget in enumerate(widgets):
-                self._stats_grid.addWidget(widget, 0, col)
+        _restack(self._stats_grid, [self._critical_tile, self._warning_tile, self._optimization_tile], stacked)
+        _restack(self._scene_grid, list(self._scene_tiles), stacked)
 
     def set_scanning(self, in_progress: bool) -> None:
         self._scan_button.setEnabled(not in_progress)
@@ -115,14 +123,34 @@ class OverviewView(QWidget):
         self._status_label.setText(f"{summary.total} finding(s) from the last scan.")
         self._scan_button.setEnabled(True)
 
+    def show_inventory(self, inventory: SceneInventory) -> None:
+        self._objects_tile.set_value(inventory.total_nodes)
+        self._materials_tile.set_value(inventory.unique_material_count)
+        self._textures_tile.set_value(inventory.unique_external_texture_count)
+        self._missing_tile.set_value(inventory.missing_texture_count)
+        self._oversized_tile.set_value(inventory.oversized_8k_count)
+
     def show_no_scan(self) -> None:
         self._health_widget.set_score(None)
-        self._critical_tile.set_value(0)
-        self._warning_tile.set_value(0)
-        self._optimization_tile.set_value(0)
+        for tile in (self._critical_tile, self._warning_tile, self._optimization_tile, *self._scene_tiles):
+            tile.set_value(0)
         self._status_label.setText("No scan has been performed yet.")
         self._scan_button.setEnabled(True)
 
     def show_error(self, message: str) -> None:
         self._status_label.setText(message)
         self._scan_button.setEnabled(True)
+
+
+def _restack(grid: QGridLayout, widgets: list[QWidget], stacked: bool) -> None:
+    for i in reversed(range(grid.count())):
+        item = grid.itemAt(i)
+        if item and item.widget():
+            grid.removeWidget(item.widget())
+
+    if stacked:
+        for row, widget in enumerate(widgets):
+            grid.addWidget(widget, row, 0)
+    else:
+        for col, widget in enumerate(widgets):
+            grid.addWidget(widget, 0, col)
