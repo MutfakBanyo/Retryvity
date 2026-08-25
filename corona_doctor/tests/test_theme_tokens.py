@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 
+import corona_doctor.ui.themes as themes_module
 from corona_doctor.ui.themes import _QSS_PATH, _TOKEN_PATTERN, _substitute_token, build_theme_tokens, load_dark_theme
 
 _UNRESOLVED_PLACEHOLDER = re.compile(r"\{[A-Za-z_]+\}")
@@ -87,3 +88,26 @@ def test_missing_token_raises_clear_error_not_bare_keyerror():
         assert "build_theme_tokens" in message
     else:
         raise AssertionError("expected a KeyError when a referenced token is missing")
+
+
+def test_load_dark_theme_failure_names_the_file_it_actually_loaded(monkeypatch):
+    """A genuine token-contract failure inside load_dark_theme() itself
+    must name the actual module/file that ran and its dark.qss's mtime —
+    the real-host reports for this bug showed a *bare* ``KeyError:
+    'DISPLAY_SIZE'`` with zero context, which is indistinguishable from
+    "this file on disk is broken" vs. "3ds Max is running a stale cached
+    copy of an already-fixed file". The wrapped message must make that
+    distinguishable on sight."""
+
+    incomplete_tokens = {k: v for k, v in build_theme_tokens().items() if k != "ACCENT"}
+    monkeypatch.setattr(themes_module, "build_theme_tokens", lambda: incomplete_tokens)
+
+    try:
+        load_dark_theme()
+    except KeyError as exc:
+        message = str(exc)
+        assert "ACCENT" in message
+        assert "__init__.py" in message
+        assert "dark.qss" in message
+    else:
+        raise AssertionError("expected a KeyError when a token is genuinely missing")

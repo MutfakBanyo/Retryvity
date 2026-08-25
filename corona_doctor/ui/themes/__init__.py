@@ -82,4 +82,32 @@ def _substitute_token(match: re.Match[str], tokens: dict[str, Any]) -> str:
 def load_dark_theme() -> str:
     template = _QSS_PATH.read_text(encoding="utf-8")
     tokens = build_theme_tokens()
-    return _TOKEN_PATTERN.sub(lambda m: _substitute_token(m, tokens), template)
+    try:
+        return _TOKEN_PATTERN.sub(lambda m: _substitute_token(m, tokens), template)
+    except KeyError as exc:
+        # This exact class of failure has hit a real host twice already
+        # while the checked-in dark.qss/__init__.py pair on disk were
+        # already consistent (see test_theme_tokens.py — the two sides
+        # are asserted identical on every test run). That means the
+        # process actually executing this code was running a stale
+        # cached copy of this module (old bytecode / a module already
+        # imported in a long-running 3ds Max session before the fix
+        # landed on disk) — not a real token mismatch. Surface enough to
+        # tell the two apart on sight instead of a bare KeyError.
+        raise KeyError(
+            f"{exc.args[0]} — this module loaded from {__file__!r} "
+            f"(dark.qss at {_QSS_PATH!r}, last modified {_qss_mtime_str()}). "
+            "If that file's content on disk already contains this token, "
+            "3ds Max is running a stale cached copy: restart 3ds Max (clears "
+            "Python's in-memory module cache), or delete "
+            "corona_doctor/ui/themes/__pycache__ and corona_doctor/ui/design/__pycache__."
+        ) from exc
+
+
+def _qss_mtime_str() -> str:
+    try:
+        import datetime
+
+        return datetime.datetime.fromtimestamp(_QSS_PATH.stat().st_mtime).isoformat(timespec="seconds")
+    except OSError:
+        return "unknown"
