@@ -5,14 +5,15 @@ Corona Doctor is a diagnostic, optimization and repair assistant for
 
 ## Development stage
 
-This repository currently contains the **architectural bootstrap
-phase**: a working plugin shell with a dockable PySide6 panel,
-environment/capability detection, a design system, and the
-scanner/repair/rule boundaries that future diagnostic milestones will
-build on. It intentionally does **not** yet include production diagnostic
-rules (texture, material, geometry, lighting checks, etc.) — see
-`docs/ARCHITECTURE.md` for what exists and why, and
-`docs/DEVELOPMENT.md` for the roadmap.
+This repository contains the architectural bootstrap (a dockable PySide6
+panel, environment/capability detection, a design system) plus its first
+production diagnostic milestone: **Scene Inventory + Texture Doctor v1**
+— read-only scene/material/texture analysis with 6 diagnostic rules
+(TXT-001..006). See `docs/TEXTURE_DOCTOR.md` for exactly what it detects
+and its read-only guarantee, `docs/ARCHITECTURE.md` for what exists and
+why, and `docs/DEVELOPMENT.md` for the roadmap. Material/renderer
+diagnostics, repair actions, and other scan categories are still future
+milestones.
 
 ## Supported environment
 
@@ -102,3 +103,5 @@ and where the JSON report is written.
 - `docs/ARCHITECTURE.md` — layer boundaries, threading rules, capability system
 - `docs/DEVELOPMENT.md` — hard compatibility rules and coding conventions
 - `docs/HOST_VALIDATION.md` — what to verify inside a real 3ds Max + Corona install
+- `docs/TEXTURE_DOCTOR.md` — Scene Inventory + Texture Doctor v1: what it
+  detects, its read-only guarantee, threshold logic, and known limitations

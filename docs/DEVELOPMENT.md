@@ -99,16 +99,27 @@ modules by `ui/themes/__init__.py::load_dark_theme()`.
 
 ## Not yet implemented (by design)
 
-The following are explicitly out of scope for this bootstrap phase and
-must not be faked with placeholder UI:
+Scene Inventory + Texture Doctor v1 (`scanners/texture_doctor_scanner.py`,
+TXT-001..006) is now real and read-only — see docs/TEXTURE_DOCTOR.md for
+exactly what it detects. Everything below is still explicitly out of
+scope and must not be faked with placeholder UI:
 
-- Production scanners (geometry, materials, textures, lighting, cameras,
-  render settings, Chaos Scatter, Corona Proxy, memory estimation)
-- Any rule in `rules/definitions/` (the directory exists; it is empty)
-- One-click repair execution (`repair/` is interfaces only)
-- Navigation sections beyond Overview / Diagnostics / Environment
-  (Scene, Renderer, Materials, Textures, Geometry, Lighting, Performance,
-  Report are declared in `core/constants.py` but not wired to a view)
+- Any other production scanner (geometry, lighting, cameras, render
+  settings, CoronaPhysicalMtl/material parameter analysis, Chaos Scatter,
+  Corona Proxy diagnostics, renderer property tuning — the 308 discovered
+  Corona renderer properties are not evaluated by anything yet)
+- One-click repair execution (`repair/` is interfaces only; every TXT-00x
+  Finding's `repairability` is `MANUAL`/`NONE`) — no relink, resize,
+  convert, or delete-duplicate action exists
+- Selection-changing UI ("Select affected objects") — read-only means no
+  scene state changes, including selection
+- Screen-space-aware texture analysis (projected pixel footprint, camera
+  distance, UV density) — TXT-004 is dimension-based only
+- Scene-change/dirty-state tracking — Scan/Rescan is manual only
+- Navigation sections beyond Overview / Diagnostics / Textures /
+  Environment (Scene, Renderer, Materials, Geometry, Lighting,
+  Performance, Report are declared in `core/constants.py` but not wired
+  to a view)
 
 Do not add a button or panel for any of the above that doesn't do
 anything — leave the section out of the navigation entirely until it has

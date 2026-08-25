@@ -11,7 +11,7 @@ app/           (composition: wires services + UI together)
    |
 scanners/      (produce Finding objects; no widgets)
 repair/        (interfaces only in this phase; no scene mutation)
-rules/         (declarative rule loading — empty in this phase)
+rules/         (rule definitions — TXT-00x Texture Doctor rules; see docs/TEXTURE_DOCTOR.md)
    |
 compatibility/ (capability registry, version parsing, feature flags)
 adapters/      (the ONLY place allowed to import pymxs/qtmax/Corona)
@@ -48,9 +48,22 @@ A scanner (`scanners/base.py::BaseScanner`) returns `Finding` objects
 (`scanners/demo_scanner.py`) is a deterministic, clearly-labeled stand-in
 for real scene analysis — every demo `Finding.details` string says so
 explicitly, so it can never be mistaken for real Corona/scene diagnostic
-output. Production scanners (geometry, materials, textures, lighting,
-Corona-specific checks, ...) are a future milestone and will implement
-the same `BaseScanner` contract.
+output. It remains in the codebase for dev/testing but the UI's "Scan
+Scene" button no longer wires to it (see below).
+
+`TextureDoctorScanner` (`scanners/texture_doctor_scanner.py`) is the
+first **production** scanner — Scene Inventory + Texture Doctor v1, read
+only. It follows a strict "scanner collects facts, rules interpret them"
+split: `adapters/scene_adapter.py` walks the real scene into detached
+`SceneInventory`/`ExternalTextureReference` facts
+(`core/texture_models.py`), then `rules/definitions/texture_rules.py`
+(loaded via `rules/loader.py::load_rules()`) turns those facts into
+`Finding`s through the existing `core/rules.py::RuleEngine` — no
+diagnostic logic is hardcoded inside the scanner itself. See
+docs/TEXTURE_DOCTOR.md for what it detects, what it deliberately does
+not, and its read-only guarantee. Future production scanners (geometry,
+lighting, renderer tuning, ...) will implement the same `BaseScanner`
+contract and the same facts/rules split.
 
 ## Adapter layer
 
@@ -111,17 +124,27 @@ the Qt event loop responsive without ever leaving the main thread.
 
 Worker threads are reserved for work that does **not** touch 3ds Max
 scene state: file hashing, image metadata reads, JSON/report processing,
-and (in future milestones) network requests. No such worker-thread code
-exists yet in this phase.
+and (in future milestones) network requests. `TextureDoctorScanner`'s
+filesystem/image-header stage (`adapters/path_utils.py`,
+`adapters/image_metadata.py`) is exactly this kind of work — it operates
+on plain Python strings detached from pymxs — but v1 still runs it
+synchronously on the main thread between chunked yields, correctness
+first. Moving it to a worker thread is a reasonable follow-up once real
+production scenes show it's the bottleneck (see docs/TEXTURE_DOCTOR.md,
+"Known limitations").
 
 ## Chunked / incremental scanning
 
 `DiagnosticEngine.iter_run()` is a generator that publishes a batch's
 events and then yields, handing control back to whatever drove it.
 `DemoScanner` simulates four stages (environment, geometry, materials,
-textures) to exercise this path end to end; production scanners will
-plug into the same generator contract when they process real scene
-batches.
+textures) to exercise this path end to end. `TextureDoctorScanner` is the
+first scanner to do this against a real scene: it yields per batch of
+~2000 scene nodes, ~200 material/map graph nodes, and ~200
+filesystem/metadata lookups, so a 50k-node production scene never blocks
+the Qt event loop for one long stretch. It also supports cooperative
+cancellation (`TextureDoctorScanner.cancel()`, checked between batches) —
+safe at any point since the scan never mutates the scene.
 
 ## Error UX
 
