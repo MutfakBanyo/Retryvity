@@ -153,3 +153,54 @@ logged (`logging/logger.py`) and surfaced as a friendly status message
 (e.g. `EnvironmentView` shows "Partial" when `EnvironmentReport.errors`
 is non-empty) rather than a raw traceback. Full tracebacks only ever go
 to the log file, never directly into a widget.
+
+## Typography
+
+`ui/design/typography.py::Typography` is the single source of truth for
+every font size/weight in the UI — a semantic token (`BODY`,
+`SECONDARY`, `CAPTION`, `SECTION_TITLE`, `TITLE`, `DISPLAY`,
+`BODY_EMPHASIS`, `BUTTON`, `TABLE`, `BADGE`), never a raw pixel literal
+scattered through QSS or a widget/delegate. `ui/themes/dark.qss` is a
+*template* substituted by `ui/themes/__init__.py::load_dark_theme()` —
+edit the Python token, never a size in the `.qss` file directly. Painted
+delegates (`ui/delegates/finding_delegate.py`) and manually-built
+`QFont`s (`ui/components/health_score.py`) read the same tokens via
+`.size`/`.weight` rather than hardcoding a `setPixelSize`/`setPointSize`
+number.
+
+The v0.2 scale floors — body >= 13px, secondary >= 12px, caption >= 11px,
+section titles 15-17px, major titles 18-22px — exist because real-host
+testing showed the v0.1 scale (9-12px) was uncomfortably small at normal
+3ds Max viewing distance. `corona_doctor/tests/test_typography_scale.py`
+guards these floors without needing PySide6 installed (pure dataclass
+module, no Qt import) — a regression there should fail loudly, not
+silently ship smaller text again.
+
+Spacing/radius (`ui/design/metrics.py`) and breakpoints
+(`ui/responsive/breakpoint_manager.py`) are expressed in Qt logical
+pixels, which Qt scales automatically for the active DPI — widget code
+must never manually multiply a dimension by a DPI factor.
+
+## Glass/depth language
+
+A few major *static* surfaces (`QWidget#SurfaceRaised` in `dark.qss` —
+the Scene Health card, the About screen's author card) use a two-stop
+`qlineargradient` plus a slightly lighter border to suggest a raised/
+glass-like surface. This is a static paint, not a runtime effect — no
+blur, no translucency stacking, no per-frame recomputation — so it costs
+nothing beyond an ordinary flat fill. Ordinary tiles/cards
+(`QWidget#Surface`) stay flat; reserve the raised gradient for surfaces
+that are genuinely a level up in the visual hierarchy, not everywhere.
+
+## Startup performance
+
+`app/application.py::launch()` profiles `bootstrap.total` (services +
+UI shell construction) via `performance/profiler.py` and logs it on every
+launch — watch this number, don't let it regress. A real-host measurement
+recorded ~23.7ms for the full shell (five eagerly-constructed views,
+nav, and the dark theme QSS load). Additions to the shell (the About
+screen, the brand-mark SVG render) follow the same pattern already used
+for the four other views and the nav's SVG icon rendering — a handful of
+label/layout widgets and one more cached SVG-to-QPixmap render — not a
+new class of cost. Anything genuinely expensive (a real scan) never runs
+during `launch()`; it only runs after the user clicks "Scan Scene".

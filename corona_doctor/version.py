@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-__version__ = "0.1.0-bootstrap"
-__stage__ = "architectural-foundation"
+__version__ = "0.2.0"
+__stage__ = "diagnostics-and-product-identity"
 
 MIN_3DS_MAX_VERSION = (2026, 2)
 MIN_CORONA_VERSION = 15

@@ -26,7 +26,7 @@ class _StatTile(QWidget):
         layout.setSpacing(2)
 
         self._value_label = QLabel("0", self)
-        self._value_label.setObjectName("Title")
+        self._value_label.setObjectName("Display")
         layout.addWidget(self._value_label)
 
         caption = QLabel(label, self)
@@ -55,7 +55,7 @@ class OverviewView(QWidget):
         root.addWidget(header)
 
         health_row = QWidget(self)
-        health_row.setObjectName("Surface")
+        health_row.setObjectName("SurfaceRaised")
         health_layout = QVBoxLayout(health_row)
         health_layout.setContentsMargins(Spacing.LG, Spacing.LG, Spacing.LG, Spacing.LG)
         health_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)

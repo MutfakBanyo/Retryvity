@@ -15,8 +15,11 @@ from corona_doctor.ui.design.metrics import Spacing
 from corona_doctor.ui.design.typography import FONT_FAMILY, Typography
 from corona_doctor.ui.models.findings_model import FindingRole
 
-_ROW_HEIGHT = 64
+_ROW_HEIGHT = 72
 _SEVERITY_DOT = 8
+_TITLE_ROW_Y = 12
+_SUMMARY_ROW_Y = 38
+_ROW_TEXT_HEIGHT = 20
 
 
 class FindingDelegate(QStyledItemDelegate):
@@ -51,7 +54,7 @@ class FindingDelegate(QStyledItemDelegate):
         x += _SEVERITY_DOT + Spacing.SM
 
         title_font = QFont(FONT_FAMILY.split(",")[0].strip())
-        title_font.setPixelSize(Typography.BODY_STRONG.size)
+        title_font.setPixelSize(Typography.BODY_EMPHASIS.size)
         title_font.setWeight(QFont.Weight.DemiBold)
         painter.setFont(title_font)
         painter.setPen(QColor(Color.TEXT_PRIMARY))
@@ -60,7 +63,7 @@ class FindingDelegate(QStyledItemDelegate):
         metrics = QFontMetrics(title_font)
         right_reserved = metrics.horizontalAdvance(impact_text) + Spacing.MD if impact_text else 0
 
-        title_rect = QRect(x, rect.top() + 8, rect.width() - x - pad - right_reserved, 18)
+        title_rect = QRect(x, rect.top() + _TITLE_ROW_Y, rect.width() - x - pad - right_reserved, _ROW_TEXT_HEIGHT)
         elided_title = metrics.elidedText(finding.title, Qt.TextElideMode.ElideRight, title_rect.width())
         painter.drawText(title_rect, Qt.AlignmentFlag.AlignVCenter, elided_title)
 
@@ -69,14 +72,14 @@ class FindingDelegate(QStyledItemDelegate):
         painter.setFont(summary_font)
         painter.setPen(QColor(Color.TEXT_SECONDARY))
         summary_metrics = QFontMetrics(summary_font)
-        summary_rect = QRect(x, rect.top() + 30, rect.width() - x - pad, 18)
+        summary_rect = QRect(x, rect.top() + _SUMMARY_ROW_Y, rect.width() - x - pad, _ROW_TEXT_HEIGHT)
         elided_summary = summary_metrics.elidedText(finding.summary, Qt.TextElideMode.ElideRight, summary_rect.width())
         painter.drawText(summary_rect, Qt.AlignmentFlag.AlignVCenter, elided_summary)
 
         if impact_text:
             painter.setFont(title_font)
             painter.setPen(QColor(Color.TEXT_MUTED))
-            impact_rect = QRect(rect.right() - pad - right_reserved + Spacing.MD, rect.top() + 8, right_reserved, 18)
+            impact_rect = QRect(rect.right() - pad - right_reserved + Spacing.MD, rect.top() + _TITLE_ROW_Y, right_reserved, _ROW_TEXT_HEIGHT)
             painter.drawText(impact_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight, impact_text)
 
         painter.restore()

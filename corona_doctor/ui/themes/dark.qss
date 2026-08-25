@@ -1,6 +1,6 @@
 /* Corona Doctor dark theme.
-   Values here must mirror corona_doctor/ui/design/colors.py and
-   metrics.py. This file is loaded and token-substituted by
+   Values here must mirror corona_doctor/ui/design/colors.py, metrics.py
+   and typography.py. This file is loaded and token-substituted by
    ui/themes/__init__.py:load_dark_theme() rather than referenced by
    raw path, so the Python tokens remain the single source of truth. */
 
@@ -17,14 +17,38 @@ QWidget#Surface {
     border-radius: {RADIUS_MEDIUM}px;
 }
 
+/* A slightly raised/elevated surface — major static panels (e.g. the
+   Scene Health card, the About screen's author card). The faint top
+   highlight + bottom-darkened border simulate tonal "glass" depth
+   cheaply (static gradient, no blur/translucency) — see
+   docs/ARCHITECTURE.md, "Glass/depth language". */
 QWidget#SurfaceRaised {
-    background-color: {SURFACE_RAISED};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 {SURFACE_OVERLAY}, stop:1 {SURFACE_RAISED});
     border: 1px solid {BORDER};
     border-radius: {RADIUS_MEDIUM}px;
 }
 
+QLabel#Display {
+    font-size: {DISPLAY_SIZE}px;
+    font-weight: 700;
+    color: {TEXT_PRIMARY};
+}
+
 QLabel#Title {
     font-size: {TITLE_SIZE}px;
+    font-weight: 700;
+    color: {TEXT_PRIMARY};
+}
+
+QLabel#SectionTitle {
+    font-size: {SECTION_TITLE_SIZE}px;
+    font-weight: 600;
+    color: {TEXT_PRIMARY};
+}
+
+QLabel#BodyEmphasis {
+    font-size: {BODY_EMPHASIS_SIZE}px;
     font-weight: 600;
     color: {TEXT_PRIMARY};
 }
@@ -35,7 +59,12 @@ QLabel#Caption {
 }
 
 QLabel#Secondary {
+    font-size: {SECONDARY_SIZE}px;
     color: {TEXT_SECONDARY};
+}
+
+QPushButton {
+    font-size: {BUTTON_SIZE}px;
 }
 
 QPushButton#Primary {
@@ -75,6 +104,7 @@ QPushButton#NavItem {
     border: none;
     border-radius: {RADIUS_SMALL}px;
     padding: {SPACING_SM}px {SPACING_MD}px;
+    font-size: {BODY_SIZE}px;
 }
 
 QPushButton#NavItem:hover {
@@ -85,6 +115,46 @@ QPushButton#NavItem:hover {
 QPushButton#NavItem:checked {
     background-color: {ACCENT_MUTED};
     color: {TEXT_PRIMARY};
+    font-weight: 600;
+}
+
+QLineEdit, QComboBox {
+    background-color: {SURFACE_RAISED};
+    border: 1px solid {BORDER};
+    border-radius: {RADIUS_SMALL}px;
+    padding: {SPACING_XS}px {SPACING_SM}px;
+    font-size: {BODY_SIZE}px;
+}
+
+QLineEdit:focus, QComboBox:focus {
+    border: 1px solid {ACCENT};
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 20px;
+}
+
+QTableView {
+    background-color: transparent;
+    border: none;
+    gridline-color: {BORDER_SUBTLE};
+    font-size: {TABLE_SIZE}px;
+    selection-background-color: {ACCENT_MUTED};
+    selection-color: {TEXT_PRIMARY};
+}
+
+QTableView::item {
+    padding: {SPACING_XS}px {SPACING_SM}px;
+}
+
+QHeaderView::section {
+    background-color: {SURFACE};
+    color: {TEXT_SECONDARY};
+    border: none;
+    border-bottom: 1px solid {BORDER};
+    padding: {SPACING_SM}px;
+    font-size: {SECONDARY_SIZE}px;
     font-weight: 600;
 }
 
@@ -112,6 +182,7 @@ QListView {
     background-color: transparent;
     border: none;
     outline: none;
+    font-size: {TABLE_SIZE}px;
 }
 
 QFrame#Divider {

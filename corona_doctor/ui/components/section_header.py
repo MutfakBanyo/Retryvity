@@ -15,7 +15,7 @@ class SectionHeader(QWidget):
         layout.setSpacing(Spacing.SM)
 
         label = QLabel(title, self)
-        label.setObjectName("Title")
+        label.setObjectName("SectionTitle")
         layout.addWidget(label)
         layout.addStretch(1)
 

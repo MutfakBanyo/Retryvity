@@ -31,6 +31,7 @@ from corona_doctor.ui.icons.icon_registry import get_icon_registry
 from corona_doctor.ui.responsive.breakpoint_manager import BreakpointManager, LayoutState
 from corona_doctor.ui.scan_controller import run_scan_async
 from corona_doctor.ui.themes import load_dark_theme
+from corona_doctor.ui.views.about_view import AboutView
 from corona_doctor.ui.views.diagnostics_view import DiagnosticsView
 from corona_doctor.ui.views.environment_view import EnvironmentView
 from corona_doctor.ui.views.overview_view import OverviewView
@@ -43,7 +44,9 @@ _NAV_ITEMS = (
     ("diagnostics", "Diagnostics", "diagnostics"),
     ("textures", "Textures", "diagnostics"),
     ("environment", "Environment", "environment"),
+    ("about", "About", "about"),
 )
+_SECTION_INDEX = {"overview": 0, "diagnostics": 1, "textures": 2, "environment": 3, "about": 4}
 
 
 class MainPanel(QWidget):
@@ -73,7 +76,8 @@ class MainPanel(QWidget):
         self._diagnostics = DiagnosticsView(self._stack)
         self._textures = TexturesView(self._stack)
         self._environment = EnvironmentView(self._stack)
-        for view in (self._overview, self._diagnostics, self._textures, self._environment):
+        self._about = AboutView(self._stack)
+        for view in (self._overview, self._diagnostics, self._textures, self._environment, self._about):
             self._stack.addWidget(view)
         root.addWidget(self._stack, stretch=1)
 
@@ -119,7 +123,7 @@ class MainPanel(QWidget):
         return nav
 
     def _show_section(self, section_id: str) -> None:
-        index = {"overview": 0, "diagnostics": 1, "textures": 2, "environment": 3}.get(section_id, 0)
+        index = _SECTION_INDEX.get(section_id, 0)
         self._stack.setCurrentIndex(index)
         button = self._nav_buttons.get(section_id)
         if button is not None:
@@ -136,6 +140,7 @@ class MainPanel(QWidget):
             if scanner.last_report is not None:
                 self._services.bus.publish(EnvironmentUpdated(report=scanner.last_report))
                 self._environment.show_report(scanner.last_report)
+                self._about.show_environment(scanner.last_report)
 
         run_scan_async(
             self._services.engine,

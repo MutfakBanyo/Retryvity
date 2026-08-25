@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
 from corona_doctor.ui.design.colors import Color
-from corona_doctor.ui.design.typography import FONT_FAMILY
+from corona_doctor.ui.design.typography import FONT_FAMILY, Typography
 
 
 def _score_color(score: int | None) -> str:
@@ -71,7 +71,7 @@ class HealthScoreWidget(QWidget):
 
         painter.setPen(QColor(Color.TEXT_PRIMARY if self._score is not None else Color.TEXT_MUTED))
         font = QFont(FONT_FAMILY.split(",")[0].strip())
-        font.setPointSize(18)
+        font.setPixelSize(Typography.DISPLAY.size)
         font.setBold(True)
         painter.setFont(font)
         label = str(self._score) if self._score is not None else "—"

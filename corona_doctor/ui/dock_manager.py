@@ -14,6 +14,7 @@ from corona_doctor.adapters.max_adapter import MaxAdapter
 from corona_doctor.app.lifecycle import clear_instance
 from corona_doctor.core.constants import APP_NAME
 from corona_doctor.logging.logger import get_logger
+from corona_doctor.ui.branding import load_brand_icon
 
 _logger = get_logger("dock_manager")
 _OBJECT_NAME = "CoronaDoctorDock"
@@ -28,6 +29,7 @@ class _CoronaDoctorDock(QDockWidget):
 def create_docked_panel(content: QWidget) -> QDockWidget:
     dock = _CoronaDoctorDock(APP_NAME)
     dock.setObjectName(_OBJECT_NAME)
+    dock.setWindowIcon(load_brand_icon(24))
     dock.setWidget(content)
     dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
     dock.setFeatures(

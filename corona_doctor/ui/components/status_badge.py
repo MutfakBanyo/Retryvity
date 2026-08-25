@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QLabel, QWidget
 
 from corona_doctor.ui.design.colors import Color
 from corona_doctor.ui.design.metrics import Radius, Spacing
+from corona_doctor.ui.design.typography import Typography
 
 
 class StatusBadge(QLabel):
@@ -18,5 +19,6 @@ class StatusBadge(QLabel):
         bg = Color.muted_for_severity(severity)
         self.setStyleSheet(
             f"background-color: {bg}; color: {fg}; border-radius: {Radius.SMALL}px; "
-            f"padding: 2px {Spacing.SM}px; font-weight: 600; font-size: 10px;"
+            f"padding: 3px {Spacing.SM}px; font-weight: {Typography.BADGE.weight}; "
+            f"font-size: {Typography.BADGE.size}px;"
         )

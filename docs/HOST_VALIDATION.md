@@ -25,7 +25,7 @@ Expected output shape:
 
 ```
 Corona Doctor Host Validation
-Version: 0.1.0-bootstrap
+Version: 0.2.0
 
 3ds Max:  2026.2  (raw: [28000, 68, 0, 28, 2, 0, 20659, 2026, '.2'])
 Python:   3.11.x

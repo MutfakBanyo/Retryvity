@@ -58,7 +58,7 @@ class _TextureDetailsPanel(QWidget):
         self._form.setSpacing(Spacing.XS)
 
         self._name_label = QLabel("Select a texture to see details.", self)
-        self._name_label.setObjectName("Title")
+        self._name_label.setObjectName("SectionTitle")
         self._name_label.setWordWrap(True)
         self._form.addRow(self._name_label)
 
