@@ -9,10 +9,10 @@ kuralları ve proje bilgilerini içerir.
    raporlar **Türkçe** yazılır. Kod, kod yorumları, commit mesajları ve
    dağıtılan ürün dosyaları (README.txt, ScriptSpot metni, arayüz
    etiketleri) İngilizce kalır — bunlar uluslararası dağıtım içindir.
-2. **Branch:** Max Heavy Finder geliştirmesi **`HeavyFinder`** branch'inde
-   yapılır. Aynı içerik, oturum altyapısının zorunlu kıldığı
-   `claude/max-heavy-finder-vymz2c` branch'ine de aynen gönderilir; iki
-   branch birebir aynı commit'leri taşır.
+2. **Branch:** Max Heavy Finder geliştirmesi **yalnızca `HeavyFinder`**
+   branch'inde yapılır ve yalnızca oraya push edilir. Oturum altyapısı
+   `claude/...` adında bir branch açsa bile oraya **gönderilmez**; başka
+   hiçbir branch'e kopyalanmaz.
 3. **Alt dal açılmaz.** Feature/fix/hotfix gibi ara branch'ler
    oluşturulmaz. Her kod güncellemesi doğrudan yukarıdaki branch'e işlenir.
 4. **PR açılmaz** — kullanıcı açıkça istemedikçe pull request
