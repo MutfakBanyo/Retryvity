@@ -249,7 +249,7 @@ fn MHF_GetGeometryKey n =
         for m in n.modifiers do k += "_m" + ((getHandleByAnim m) as string)
     )
     catch ( k = undefined )
-    if k == undefined do k = "n" + ((try ((getHandleByAnim n) as string) catch ("?" + n as string)))
+    if k == undefined do k = "n" + (try ((getHandleByAnim n) as string) catch ("?" + (n as string)))
     k
 )
 
@@ -746,5 +746,19 @@ macroScript MaxHeavyFinder
     buttonText:"Max Heavy Finder"
     toolTip:"Max Heavy Finder - find the heaviest geometry in the scene"
 (
-    on execute do MaxHeavyFinder_Open()
+    on execute do
+    (
+        -- The implementation above is defined when this file is evaluated.
+        -- If it is missing for any reason, re-evaluate this very file once
+        -- before giving up, so a button press can heal a partial install.
+        if MaxHeavyFinder_Open == undefined do
+        (
+            local thisFile = try ( getThisScriptFilename() ) catch ( "" )
+            if thisFile != undefined and thisFile != "" and (doesFileExist thisFile) do
+                try ( fileIn thisFile ) catch ()
+        )
+
+        if MaxHeavyFinder_Open != undefined then MaxHeavyFinder_Open()
+        else messageBox "Max Heavy Finder could not initialise.\n\nRun MaxHeavyFinder.mcr once through Scripting > Run Script." title:"Max Heavy Finder"
+    )
 )
