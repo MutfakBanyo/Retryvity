@@ -89,3 +89,15 @@ requires manual verification.
 - `docs/ARCHITECTURE.md` — layer boundaries, threading rules, capability system
 - `docs/DEVELOPMENT.md` — hard compatibility rules and coding conventions
 - `docs/HOST_VALIDATION.md` — what to verify inside a real 3ds Max + Corona install
+
+## Also in this repository: Max Heavy Finder
+
+`MaxHeavyFinder_v0.1.0/` contains a separate, self-contained free utility:
+**Max Heavy Finder**, a read-only MAXScript tool that ranks the geometry in a
+3ds Max scene by triangle count and by total scene impact, grouping instanced
+geometry into a single row.
+
+It shares nothing with Corona Doctor: pure MAXScript, no Python, no PySide6, no
+renderer dependency, one `.mcr` file. See
+`MaxHeavyFinder_v0.1.0/README.txt` for installation and usage, and
+`max_heavy_finder_dev/` for the in-Max test runner and the static source check.

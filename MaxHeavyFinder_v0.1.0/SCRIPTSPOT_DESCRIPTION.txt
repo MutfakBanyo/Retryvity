@@ -1,0 +1,25 @@
+Max Heavy Finder
+
+Find the geometry objects responsible for the highest polygon load in your 3ds Max scene.
+
+Max Heavy Finder scans your scene and ranks geometry by triangle count and total scene impact. Instanced geometry is grouped so you can immediately see both the weight of a single object and the combined impact of all its instances.
+
+Features:
+- Triangle count
+- Scene percentage
+- Instance detection
+- Instance scene impact
+- Top 10 / 25 / 50 filtering
+- 100K / 500K / 1M thresholds
+- Select and zoom directly to heavy objects
+- Renderer independent
+- Read-only - does not modify your scene
+
+Installation:
+Copy MaxHeavyFinder.mcr into your 3ds Max usermacros folder, restart 3ds Max, then assign it from Customize > Customize User Interface, category "Max Heavy Finder".
+
+Version: 0.1.0
+License: MIT
+
+Website:
+https://yukselmurat.com/tools/max-heavy-finder
