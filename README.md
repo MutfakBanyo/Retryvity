@@ -1,4 +1,41 @@
-# Corona Doctor
+# Retryvity — 3ds Max plugins
+
+This repository hosts 3ds Max Python plugins. Each one lives in its own
+top-level package at the repo root.
+
+| Plugin | What it does | Stage |
+|---|---|---|
+| [`corona_doctor/`](#corona-doctor) | Diagnostic / optimization / repair assistant for Chaos Corona | Bootstrap |
+| [`revision_guard/`](#revisionguard) | Scene revision comparison engine | V0.1 |
+
+---
+
+## RevisionGuard
+
+RevisionGuard snapshots a 3ds Max scene, then tells you exactly what
+changed: which objects were added, removed, moved, or had their mesh
+edited.
+
+**Install:** drag `install_revision_guard.ms` onto the 3ds Max viewport
+(keep it next to the `revision_guard` folder). The panel opens right away
+and a "RevisionGuard" menu is added to the menu bar.
+
+**Use:** *Create Snapshot* → modify the scene → *Compare Scene* →
+*Select Changed* / *Isolate Changed*.
+
+**Validate inside 3ds Max:**
+
+```python
+from revision_guard.devtools.smoke_test import run_smoke_test
+run_smoke_test()
+```
+
+See [`docs/REVISIONGUARD.md`](docs/REVISIONGUARD.md) for the fingerprint
+strategy, identity model, scope boundary and known limitations.
+
+---
+
+## Corona Doctor
 
 Corona Doctor is a diagnostic, optimization and repair assistant for
 **Autodesk 3ds Max 2026.3+** running **Chaos Corona 15+**.
@@ -61,7 +98,7 @@ tests run outside 3ds Max.
 **Outside 3ds Max** (unit tests only, no UI):
 
 ```bash
-python3 -m pytest corona_doctor/tests
+python3 -m pytest corona_doctor/tests revision_guard/tests
 ```
 
 **Inside 3ds Max 2026.3+, without the installer** (e.g. from the
@@ -86,6 +123,7 @@ requires manual verification.
 
 ## Documentation
 
+- `docs/REVISIONGUARD.md` — RevisionGuard V0.1 engine, identity model and limits
 - `docs/ARCHITECTURE.md` — layer boundaries, threading rules, capability system
 - `docs/DEVELOPMENT.md` — hard compatibility rules and coding conventions
 - `docs/HOST_VALIDATION.md` — what to verify inside a real 3ds Max + Corona install

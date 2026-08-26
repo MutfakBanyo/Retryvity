@@ -5,7 +5,7 @@ description = "Diagnostic, optimization and repair assistant for 3ds Max + Chaos
 requires-python = ">=3.11,<3.12"
 
 [tool.pytest.ini_options]
-testpaths = ["corona_doctor/tests"]
+testpaths = ["corona_doctor/tests", "revision_guard/tests"]
 
 [build-system]
 requires = ["setuptools>=68"]
